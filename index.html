@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Home Inventory</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0f172a">
+<style>
+:root{
+  --bg:#0f172a; --card:#16213e; --card2:#1c2b4a; --text:#e8edf7; --muted:#8b96b3;
+  --accent:#14b8a6; --accent2:#22d3ee; --danger:#f87171; --warn:#fbbf24; --good:#4ade80;
+  --border:#28334f; --radius:14px;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans Bengali",sans-serif;}
+body{display:flex;flex-direction:column;min-height:100%;}
+#app{flex:1;display:flex;flex-direction:column;max-width:640px;margin:0 auto;width:100%;}
+header.topbar{position:sticky;top:0;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px;background:rgba(15,23,42,.92);backdrop-filter:blur(6px);z-index:20;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);}
+header.topbar h1{font-size:18px;margin:0;font-weight:700;}
+header.topbar .lang-btn{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:20px;padding:6px 12px;font-size:13px;}
+main{flex:1;padding:14px 14px 90px;overflow-y:auto;}
+.view{display:none;}
+.view.active{display:block;animation:fade .15s ease;}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+h2.section-title{font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:18px 0 8px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;}
+.stat-card .label{font-size:12px;color:var(--muted);margin-bottom:4px;}
+.stat-card .value{font-size:20px;font-weight:700;}
+.stat-card .value.good{color:var(--good)}
+.stat-card .value.danger{color:var(--danger)}
+.quick-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.qa-btn{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:10px 4px;text-align:center;font-size:11px;color:var(--text);}
+.qa-btn .ic{font-size:20px;display:block;margin-bottom:4px;}
+button{cursor:pointer;font-family:inherit;}
+.btn{background:var(--accent);border:none;color:#04211d;font-weight:700;border-radius:10px;padding:11px 16px;font-size:14px;width:100%;}
+.btn.secondary{background:var(--card2);color:var(--text);border:1px solid var(--border);}
+.btn.danger{background:var(--danger);color:#2a0a0a;}
+.btn.small{width:auto;padding:8px 12px;font-size:13px;}
+.row{display:flex;gap:8px;}
+.row>*{flex:1;}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;}
+input,select,textarea{width:100%;background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 12px;font-size:15px;font-family:inherit;}
+input[type=checkbox]{width:auto;}
+textarea{min-height:70px;resize:vertical;}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;margin:12px 0 4px;}
+.switch{position:relative;width:42px;height:24px;flex-shrink:0;}
+.switch input{opacity:0;width:0;height:0;}
+.slider{position:absolute;inset:0;background:var(--card2);border:1px solid var(--border);border-radius:24px;transition:.2s;}
+.slider:before{content:"";position:absolute;width:18px;height:18px;left:2px;top:2px;background:var(--muted);border-radius:50%;transition:.2s;}
+input:checked+.slider{background:var(--accent);}
+input:checked+.slider:before{background:#04211d;transform:translateX(18px);}
+.denom-row{display:grid;grid-template-columns:60px 1fr 90px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);}
+.denom-row:last-child{border-bottom:none;}
+.denom-label{font-weight:700;}
+.denom-total{text-align:right;color:var(--accent2);font-weight:600;}
+.list-item{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.list-item .meta{font-size:12px;color:var(--muted);}
+.list-item .amt{font-weight:700;white-space:nowrap;}
+.list-item .amt.income{color:var(--good)}
+.list-item .amt.expense{color:var(--danger)}
+.badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;background:var(--card2);border:1px solid var(--border);color:var(--muted);}
+.badge.low{background:#3a1a1a;color:var(--danger);border-color:#5a2a2a;}
+.badge.open{background:#1a3a2f;color:var(--good);border-color:#2a5a45;}
+.fab{position:fixed;bottom:calc(78px + env(safe-area-inset-bottom,0px));right:20px;background:var(--accent);color:#04211d;width:54px;height:54px;border-radius:50%;border:none;font-size:26px;box-shadow:0 4px 14px rgba(0,0,0,.4);z-index:15;}
+nav.bottomnav{position:sticky;bottom:0;background:rgba(22,33,62,.96);backdrop-filter:blur(6px);border-top:1px solid var(--border);display:flex;padding-bottom:env(safe-area-inset-bottom,0px);z-index:20;}
+nav.bottomnav button{flex:1;background:none;border:none;color:var(--muted);font-size:10px;padding:8px 2px 6px;display:flex;flex-direction:column;align-items:center;gap:2px;}
+nav.bottomnav button.active{color:var(--accent);}
+nav.bottomnav .ic{font-size:18px;}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:none;align-items:flex-end;justify-content:center;}
+.modal-bg.active{display:flex;}
+.modal{background:var(--bg);border-top-left-radius:18px;border-top-right-radius:18px;border:1px solid var(--border);width:100%;max-width:640px;max-height:88vh;overflow-y:auto;padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px));}
+.modal h3{margin-top:0;}
+.modal-close{position:sticky;top:0;text-align:right;}
+.modal-close span{cursor:pointer;color:var(--muted);font-size:22px;}
+.filter-tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px;padding-bottom:2px;}
+.filter-tabs button{background:var(--card2);border:1px solid var(--border);color:var(--muted);border-radius:20px;padding:6px 14px;font-size:12px;white-space:nowrap;}
+.filter-tabs button.active{background:var(--accent);color:#04211d;border-color:var(--accent);font-weight:700;}
+.bar-row{margin-bottom:8px;}
+.bar-row .bar-label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;}
+.bar-track{background:var(--card2);border-radius:6px;height:10px;overflow:hidden;}
+.bar-fill{background:linear-gradient(90deg,var(--accent),var(--accent2));height:100%;}
+.empty{text-align:center;color:var(--muted);padding:30px 10px;font-size:13px;}
+.toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--card2);border:1px solid var(--border);color:var(--text);padding:10px 18px;border-radius:20px;font-size:13px;z-index:60;opacity:0;transition:opacity .25s;pointer-events:none;}
+.toast.show{opacity:1;}
+.divider{border:none;border-top:1px solid var(--border);margin:14px 0;}
+.discrepancy{font-size:18px;font-weight:800;text-align:center;padding:10px;border-radius:10px;margin:10px 0;}
+.discrepancy.ok{background:#1a3a2f;color:var(--good);}
+.discrepancy.bad{background:#3a1a1a;color:var(--danger);}
+::-webkit-scrollbar{width:0;height:0;}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#0f172a;--text:#e8edf7;}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <h1 id="appTitle">🏠 Home Inventory</h1>
+    <button class="lang-btn" id="langToggle">EN / বাং</button>
+  </header>
+  <main id="main"></main>
+  <button class="fab" id="fabAdd" title="Quick add">+</button>
+  <nav class="bottomnav">
+    <button data-view="dashboard" class="active"><span class="ic">🏠</span><span data-i18n="nav.dashboard">Dashboard</span></button>
+    <button data-view="cash"><span class="ic">💵</span><span data-i18n="nav.cash">Cash</span></button>
+    <button data-view="shopping"><span class="ic">🛒</span><span data-i18n="nav.shopping">Shopping</span></button>
+    <button data-view="expenses"><span class="ic">🧾</span><span data-i18n="nav.expenses">Expenses</span></button>
+    <button data-view="inventory"><span class="ic">📦</span><span data-i18n="nav.inventory">Inventory</span></button>
+    <button data-view="reports"><span class="ic">📊</span><span data-i18n="nav.reports">Reports</span></button>
+    <button data-view="transactions"><span class="ic">📋</span><span data-i18n="nav.txns">History</span></button>
+    <button data-view="settings"><span class="ic">⚙️</span><span data-i18n="nav.settings">Settings</span></button>
+  </nav>
+</div>
+<div class="modal-bg" id="modalBg"><div class="modal" id="modalBody"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= CONFIG / I18N ================= */
+const CURRENCY_SYMBOL = "৳";
+const fmt = (n) => CURRENCY_SYMBOL + Math.round(n||0).toLocaleString('en-IN');
+const uid = () => 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,9);
+const now = () => new Date().toISOString();
+const todayStr = () => new Date().toISOString().slice(0,10);
+const timeStr = () => new Date().toTimeString().slice(0,5);
+let DEVICE_ID = localStorage.getItem('hi_device_id');
+if(!DEVICE_ID){ DEVICE_ID = uid(); localStorage.setItem('hi_device_id', DEVICE_ID); }
+
+const T = {
+  en:{ "nav.dashboard":"Dashboard","nav.cash":"Cash","nav.shopping":"Shopping","nav.expenses":"Expenses",
+    "nav.inventory":"Inventory","nav.reports":"Reports","nav.txns":"History","nav.settings":"Settings",
+    balance:"Cash Balance", notesTotal:"Notes Total", coinsTotal:"Coins Total", todayExpense:"Today's Expense",
+    openSessions:"Open Sessions", todayShopping:"Today's Shopping", todayTransport:"Today's Transport",
+    recent:"Recent Transactions", addCash:"Add Cash", startShopping:"Start Shopping", addExpense:"Add Expense",
+    addJourney:"Add Journey", addIncome:"Add Income", viewReports:"Reports", exportData:"Export", importData:"Import" },
+  bn:{ "nav.dashboard":"ড্যাশবোর্ড","nav.cash":"নগদ","nav.shopping":"কেনাকাটা","nav.expenses":"খরচ",
+    "nav.inventory":"মজুদ","nav.reports":"রিপোর্ট","nav.txns":"লেনদেন","nav.settings":"সেটিংস",
+    balance:"নগদ ব্যালেন্স", notesTotal:"নোট মোট", coinsTotal:"কয়েন মোট", todayExpense:"আজকের খরচ",
+    openSessions:"চলমান সেশন", todayShopping:"আজকের কেনাকাটা", todayTransport:"আজকের যাতায়াত",
+    recent:"সাম্প্রতিক লেনদেন", addCash:"নগদ যোগ করুন", startShopping:"কেনাকাটা শুরু", addExpense:"খরচ যোগ",
+    addJourney:"যাতায়াত যোগ", addIncome:"আয় যোগ", viewReports:"রিপোর্ট", exportData:"এক্সপোর্ট", importData:"ইমপোর্ট" }
+};
+let LANG = localStorage.getItem('hi_lang') || 'en';
+function tr(key){ return (T[LANG] && T[LANG][key]) || (T.en[key]) || key; }
+function applyI18n(){
+  document.querySelectorAll('[data-i18n]').forEach(el=>{ el.textContent = tr(el.dataset.i18n); });
+}
+document.getElementById('langToggle').onclick = ()=>{ LANG = LANG==='en'?'bn':'en'; localStorage.setItem('hi_lang',LANG); applyI18n(); render(); };
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ================= DENOMINATIONS ================= */
+const NOTES = [1000,500,200,100,50,20,10,5,2];
+const COINS = [5,2,1];
+const DEFAULT_CATEGORIES = ["Grocery","Food","Transport","Medicine","Household","Utility","Shopping","Personal","Entertainment","Other"];
+
+/* ================= INDEXEDDB LAYER ================= */
+const DB_NAME = 'homeInventoryDB', DB_VERSION = 1;
+const STORES = ["categories","cashSnapshots","currentCash","sessions","expenses","incomes","inventory","transactions","settings"];
+let db;
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e)=>{
+      const d = e.target.result;
+      STORES.forEach(s=>{ if(!d.objectStoreNames.contains(s)) d.createObjectStore(s,{keyPath:'id'}); });
+    };
+    req.onsuccess = (e)=>{ db = e.target.result; resolve(db); };
+    req.onerror = (e)=>reject(e);
+  });
+}
+function tx(store, mode='readonly'){ return db.transaction(store, mode).objectStore(store); }
+function dbGetAll(store){ return new Promise((res,rej)=>{ const r = tx(store).getAll(); r.onsuccess=()=>res(r.result); r.onerror=rej; }); }
+function dbGet(store,id){ return new Promise((res,rej)=>{ const r = tx(store).get(id); r.onsuccess=()=>res(r.result); r.onerror=rej; }); }
+function dbPut(store,obj){ return new Promise((res,rej)=>{ if(!obj.id) obj.id=uid(); obj.updatedAt=now(); if(!obj.createdAt) obj.createdAt=now(); obj.deviceId=DEVICE_ID; const r = tx(store,'readwrite').put(obj); r.onsuccess=()=>res(obj); r.onerror=rej; }); }
+function dbDelete(store,id){ return new Promise((res,rej)=>{ const r = tx(store,'readwrite').delete(id); r.onsuccess=()=>res(); r.onerror=rej; }); }
+function dbClear(store){ return new Promise((res,rej)=>{ const r = tx(store,'readwrite').clear(); r.onsuccess=()=>res(); r.onerror=rej; }); }
+
+async function addTransaction(type, amount, category, description, sessionId=null){
+  await dbPut('transactions',{ id:uid(), type, amount:Math.round(amount), category:category||'Other',
+    date: todayStr(), time: timeStr(), sessionId, description: description||'', createdAt:now(), updatedAt:now() });
+}
+
+/* ================= STATE / INIT ================= */
+let STATE = { view:'dashboard', advCash:false, advShopping:false, categories:[], currentCash:null };
+
+async function seedIfEmpty(){
+  const cats = await dbGetAll('categories');
+  if(cats.length===0){
+    for(const c of DEFAULT_CATEGORIES) await dbPut('categories',{id:uid(),name:c,active:true});
+  }
+  const cc = await dbGet('currentCash','current');
+  if(!cc){
+    const denoms = {}; [...NOTES,...COINS].forEach(d=>denoms[d]=0);
+    await dbPut('currentCash',{id:'current', denoms, advanced:false, notesMeta:{}});
+  }
+  const s = await dbGet('settings','app');
+  if(!s) await dbPut('settings',{id:'app', lang:'en', lastBackup:null});
+}
+
+async function getCurrentCash(){ return await dbGet('currentCash','current'); }
+function cashTotals(cc){
+  let notesTotal=0, coinsTotal=0;
+  NOTES.forEach(d=>{ notesTotal += d * (cc.denoms[d]||0); });
+  COINS.forEach(d=>{ coinsTotal += d * (cc.denoms[d]||0); });
+  return { notesTotal, coinsTotal, grand: notesTotal+coinsTotal };
+}
+
+/* ================= ROUTER ================= */
+const views = {};
+function setView(v){
+  STATE.view = v;
+  document.querySelectorAll('nav.bottomnav button').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
+  render();
+}
+document.querySelectorAll('nav.bottomnav button').forEach(b=> b.onclick=()=>setView(b.dataset.view));
+document.getElementById('fabAdd').onclick = ()=>openQuickAddMenu();
+
+function openModal(html){
+  document.getElementById('modalBody').innerHTML = '<div class="modal-close"><span onclick="closeModal()">✕</span></div>' + html;
+  document.getElementById('modalBg').classList.add('active');
+  applyI18n();
+}
+function closeModal(){ document.getElementById('modalBg').classList.remove('active'); }
+document.getElementById('modalBg').onclick = (e)=>{ if(e.target.id==='modalBg') closeModal(); };
+
+function openQuickAddMenu(){
+  openModal(`<h3>Quick Add</h3>
+  <button class="btn secondary" style="margin-bottom:8px" onclick="closeModal();setView('cash')">💵 ${tr('addCash')}</button>
+  <button class="btn secondary" style="margin-bottom:8px" onclick="closeModal();openStartSession()">🛒 ${tr('startShopping')}</button>
+  <button class="btn secondary" style="margin-bottom:8px" onclick="closeModal();openExpenseForm()">🧾 ${tr('addExpense')}</button>
+  <button class="btn secondary" style="margin-bottom:8px" onclick="closeModal();openIncomeForm()">➕ ${tr('addIncome')}</button>`);
+}
+
+async function render(){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  const main = document.getElementById('main');
+  main.innerHTML = '<div class="view active" id="viewRoot"></div>';
+  const root = document.getElementById('viewRoot');
+  if(STATE.view==='dashboard') await renderDashboard(root);
+  else if(STATE.view==='cash') await renderCash(root);
+  else if(STATE.view==='shopping') await renderShopping(root);
+  else if(STATE.view==='expenses') await renderExpenses(root);
+  else if(STATE.view==='inventory') await renderInventory(root);
+  else if(STATE.view==='reports') await renderReports(root);
+  else if(STATE.view==='transactions') await renderTransactions(root);
+  else if(STATE.view==='settings') await renderSettings(root);
+  applyI18n();
+}
+
+/* ================= DASHBOARD ================= */
+async function renderDashboard(root){
+  const cc = await getCurrentCash();
+  const {notesTotal, coinsTotal, grand} = cashTotals(cc);
+  const txns = await dbGetAll('transactions');
+  const today = todayStr();
+  const todayTxns = txns.filter(t=>t.date===today);
+  const todayExpense = todayTxns.filter(t=>['Expense','Shopping','Transport'].includes(t.type)).reduce((a,b)=>a+b.amount,0);
+  const todayShopping = todayTxns.filter(t=>t.type==='Shopping').reduce((a,b)=>a+b.amount,0);
+  const todayTransport = todayTxns.filter(t=>t.type==='Transport').reduce((a,b)=>a+b.amount,0);
+  const sessions = await dbGetAll('sessions');
+  const openSessions = sessions.filter(s=>s.status==='open').length;
+  const recent = txns.sort((a,b)=> (b.date+b.time).localeCompare(a.date+a.time)).slice(0,6);
+
+  root.innerHTML = `
+  <div class="grid2">
+    <div class="stat-card"><div class="label">${tr('balance')}</div><div class="value good">${fmt(grand)}</div></div>
+    <div class="stat-card"><div class="label">${tr('todayExpense')}</div><div class="value danger">${fmt(todayExpense)}</div></div>
+    <div class="stat-card"><div class="label">${tr('notesTotal')}</div><div class="value">${fmt(notesTotal)}</div></div>
+    <div class="stat-card"><div class="label">${tr('coinsTotal')}</div><div class="value">${fmt(coinsTotal)}</div></div>
+    <div class="stat-card"><div class="label">${tr('openSessions')}</div><div class="value">${openSessions}</div></div>
+    <div class="stat-card"><div class="label">${tr('todayShopping')}</div><div class="value">${fmt(todayShopping)}</div></div>
+    <div class="stat-card"><div class="label">${tr('todayTransport')}</div><div class="value">${fmt(todayTransport)}</div></div>
+    <div class="stat-card"><div class="label">Categories</div><div class="value">${(await dbGetAll('categories')).filter(c=>c.active).length}</div></div>
+  </div>
+  <h2 class="section-title">Quick Actions</h2>
+  <div class="quick-actions">
+    <button class="qa-btn" onclick="setView('cash')"><span class="ic">💵</span>${tr('addCash')}</button>
+    <button class="qa-btn" onclick="openStartSession()"><span class="ic">🛒</span>${tr('startShopping')}</button>
+    <button class="qa-btn" onclick="openExpenseForm()"><span class="ic">🧾</span>${tr('addExpense')}</button>
+    <button class="qa-btn" onclick="openIncomeForm()"><span class="ic">➕</span>${tr('addIncome')}</button>
+    <button class="qa-btn" onclick="setView('reports')"><span class="ic">📊</span>${tr('viewReports')}</button>
+    <button class="qa-btn" onclick="setView('settings')"><span class="ic">⬇️</span>${tr('exportData')}</button>
+  </div>
+  <h2 class="section-title">${tr('recent')}</h2>
+  ${recent.length? recent.map(txnRow).join('') : `<div class="empty">No transactions yet. Try Load Demo Data in Settings.</div>`}
+  `;
+}
+function txnRow(t){
+  const isIncome = t.type==='Income';
+  return `<div class="list-item"><div><div>${t.description||t.type}</div><div class="meta">${t.type} · ${t.category} · ${t.date} ${t.time}</div></div><div class="amt ${isIncome?'income':'expense'}">${isIncome?'+':'-'}${fmt(t.amount)}</div></div>`;
+}
+
+/* ================= CASH / DENOMINATIONS ================= */
+async function renderCash(root){
+  const cc = await getCurrentCash();
+  const {notesTotal, coinsTotal, grand} = cashTotals(cc);
+  const snapshots = (await dbGetAll('cashSnapshots')).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  root.innerHTML = `
+  <div class="grid3">
+    <div class="stat-card"><div class="label">Notes</div><div class="value">${fmt(notesTotal)}</div></div>
+    <div class="stat-card"><div class="label">Coins</div><div class="value">${fmt(coinsTotal)}</div></div>
+    <div class="stat-card"><div class="label">Grand Total</div><div class="value good">${fmt(grand)}</div></div>
+  </div>
+  <div class="card">
+    <div class="toggle-row"><b>Notes</b><label class="switch"><input type="checkbox" id="advCashToggle" ${cc.advanced?'checked':''}><span class="slider"></span></label></div>
+    <div id="notesRows"></div>
+  </div>
+  <div class="card"><b>Coins</b><div id="coinsRows"></div></div>
+  <button class="btn" onclick="saveSnapshotFlow()">📸 Save Cash Snapshot</button>
+  <h2 class="section-title">Snapshots</h2>
+  ${snapshots.length? snapshots.map(s=>`<div class="list-item"><div><div>${s.name}</div><div class="meta">${s.createdAt.slice(0,16).replace('T',' ')}</div></div><div class="amt">${fmt(s.grand)}</div></div>`).join('') : '<div class="empty">No snapshots yet.</div>'}
+  `;
+  document.getElementById('advCashToggle').onchange = async (e)=>{ cc.advanced=e.target.checked; await dbPut('currentCash',cc); renderDenomRows(cc); };
+  renderDenomRows(cc);
+}
+function renderDenomRows(cc){
+  const notesEl = document.getElementById('notesRows');
+  const coinsEl = document.getElementById('coinsRows');
+  notesEl.innerHTML = NOTES.map(d=>denomRowHtml(d,cc,true)).join('');
+  coinsEl.innerHTML = COINS.map(d=>denomRowHtml(d,cc,false)).join('');
+  [...NOTES,...COINS].forEach(d=>{
+    const inp = document.getElementById('qty_'+d);
+    inp.oninput = async ()=>{
+      const cc2 = await getCurrentCash();
+      cc2.denoms[d] = Math.max(0, parseInt(inp.value)||0);
+      await dbPut('currentCash',cc2);
+      document.getElementById('tot_'+d).textContent = fmt(d*cc2.denoms[d]);
+      const t = cashTotals(cc2);
+      // silently refresh header stat cards if present
+    };
+  });
+}
+function denomRowHtml(d,cc,isNote){
+  const qty = cc.denoms[d]||0;
+  let advHtml = '';
+  if(isNote && cc.advanced){
+    const meta = cc.notesMeta[d] || {condition:'General', torn:false};
+    advHtml = `<div class="row" style="margin-top:6px">
+      <select onchange="setNoteMeta(${d},'condition',this.value)">
+        ${['New','Medium Old','Old','General'].map(c=>`<option value="${c}" ${meta.condition===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+      <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" ${meta.torn?'checked':''} onchange="setNoteMeta(${d},'torn',this.checked)"> Torn</label>
+    </div>`;
+  }
+  return `<div class="denom-row"><div class="denom-label">${CURRENCY_SYMBOL}${d}</div>
+    <input type="number" min="0" id="qty_${d}" value="${qty}">
+    <div class="denom-total" id="tot_${d}">${fmt(d*qty)}</div></div>${advHtml}`;
+}
+async function setNoteMeta(d,key,val){
+  const cc = await getCurrentCash();
+  if(!cc.notesMeta[d]) cc.notesMeta[d]={condition:'General',torn:false};
+  cc.notesMeta[d][key]=val;
+  await dbPut('currentCash',cc);
+}
+async function saveSnapshotFlow(){
+  const cc = await getCurrentCash();
+  const {notesTotal,coinsTotal,grand} = cashTotals(cc);
+  openModal(`<h3>Save Cash Snapshot</h3>
+    <label>Snapshot Name</label><input id="snapName" placeholder="e.g. Morning Cash — ${todayStr()}">
+    <div class="card" style="margin-top:10px"><div>Notes: ${fmt(notesTotal)}</div><div>Coins: ${fmt(coinsTotal)}</div><div><b>Total: ${fmt(grand)}</b></div></div>
+    <button class="btn" style="margin-top:12px" onclick="confirmSnapshot()">Save Snapshot</button>`);
+}
+async function confirmSnapshot(){
+  const name = document.getElementById('snapName').value.trim() || ('Snapshot — '+todayStr());
+  const cc = await getCurrentCash();
+  const {notesTotal,coinsTotal,grand} = cashTotals(cc);
+  await dbPut('cashSnapshots',{id:uid(), name, denoms:{...cc.denoms}, notesTotal, coinsTotal, grand, createdAt:now()});
+  await addTransaction('Cash Snapshot', 0, 'Cash', name);
+  closeModal(); toast('Snapshot saved'); render();
+}
+
+/* ================= SHOPPING SESSIONS ================= */
+function sessionItemsTotal(s){ return (s.items||[]).reduce((a,i)=>a+i.total,0); }
+function sessionJourneysTotal(s){ return (s.journeys||[]).reduce((a,j)=>a+j.cost,0); }
+function sessionTotal(s){ return sessionItemsTotal(s) + sessionJourneysTotal(s); }
+
+async function renderShopping(root){
+  const sessions = (await dbGetAll('sessions')).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  root.innerHTML = `<button class="btn" onclick="openStartSession()">🛒 ${tr('startShopping')}</button>
+  <h2 class="section-title">Sessions</h2>
+  ${sessions.length? sessions.map(s=>{
+    const total = sessionTotal(s);
+    return `<div class="list-item" onclick="openSessionDetail('${s.id}')" style="cursor:pointer">
+      <div><div>${s.name} <span class="badge ${s.status==='open'?'open':''}">${s.status}</span></div>
+      <div class="meta">${s.date} · cash taken ${fmt(s.cashTaken)} · ${(s.items||[]).length} items</div></div>
+      <div class="amt expense">${fmt(total)}</div></div>`;
+  }).join('') : '<div class="empty">No shopping sessions yet.</div>'}`;
+}
+
+function openStartSession(){
+  openModal(`<h3>${tr('startShopping')}</h3>
+  <label>Session Name</label><input id="sesName" placeholder="e.g. First Bazar Today">
+  <label>Date</label><input type="date" id="sesDate" value="${todayStr()}">
+  <label>Start Time</label><input type="time" id="sesTime" value="${timeStr()}">
+  <label>Cash Taken (${CURRENCY_SYMBOL})</label><input type="number" min="0" id="sesCash" placeholder="0">
+  <button class="btn" style="margin-top:14px" onclick="createSession()">Start Session</button>`);
+}
+async function createSession(){
+  const name = document.getElementById('sesName').value.trim();
+  if(!name){ toast('Enter a session name'); return; }
+  const cashTaken = Math.max(0, parseInt(document.getElementById('sesCash').value)||0);
+  const s = { id:uid(), name, date:document.getElementById('sesDate').value||todayStr(),
+    startTime:document.getElementById('sesTime').value||timeStr(), cashTaken, status:'open',
+    items:[], journeys:[], advanced:false, shop:{name:'',phone:'',address:''},
+    bill:{total:0,paid:0,change:0}, endCash:null, createdAt:now() };
+  await dbPut('sessions', s);
+  closeModal(); toast('Session started'); STATE.view='shopping'; render(); openSessionDetail(s.id);
+}
+
+async function openSessionDetail(id){
+  const s = await dbGet('sessions', id);
+  if(!s){ return; }
+  const itemsTotal = sessionItemsTotal(s), journeysTotal = sessionJourneysTotal(s), total = itemsTotal+journeysTotal;
+  openModal(`<h3>${s.name} <span class="badge ${s.status==='open'?'open':''}">${s.status}</span></h3>
+  <div class="meta">${s.date} ${s.startTime} · Cash taken: ${fmt(s.cashTaken)}</div>
+  <div class="toggle-row"><b>Advanced</b><label class="switch"><input type="checkbox" id="advSesToggle" ${s.advanced?'checked':''}><span class="slider"></span></label></div>
+  <div id="advShopBlock"></div>
+  <label>Quick add items — one per line ("Item, Price" or "Item - ৳Price")</label>
+  <textarea id="quickItems" placeholder="Rice, 1090\nPotato, 600\nRickshaw, 40"></textarea>
+  <button class="btn secondary" style="margin-top:8px" onclick="quickAddItems('${s.id}')">+ Add Items</button>
+  <h4 style="margin-bottom:6px">Items (${(s.items||[]).length}) — ${fmt(itemsTotal)}</h4>
+  ${(s.items||[]).map((it,idx)=>`<div class="list-item"><div><div>${it.name}${it.qty>1?(' × '+it.qty):''}</div><div class="meta">${it.category||''} ${it.unit?('· '+it.unit):''}</div></div><div class="amt expense">${fmt(it.total)} <span onclick="removeSessionItem('${s.id}',${idx})" style="cursor:pointer;color:var(--danger)">✕</span></div></div>`).join('') || '<div class="empty">No items yet.</div>'}
+  <h4 style="margin:14px 0 6px">Journeys — ${fmt(journeysTotal)}</h4>
+  ${(s.journeys||[]).map((j,idx)=>`<div class="list-item"><div><div>${j.type}</div><div class="meta">${j.from||''}${j.to?(' → '+j.to):''}</div></div><div class="amt expense">${fmt(j.cost)} <span onclick="removeSessionJourney('${s.id}',${idx})" style="cursor:pointer;color:var(--danger)">✕</span></div></div>`).join('') || '<div class="empty">No journeys yet.</div>'}
+  <div class="row" style="margin-top:8px">
+    <select id="journeyType"><option>Rickshaw</option><option>CNG</option><option>Bus</option><option>Walking</option><option>Other</option></select>
+    <input type="number" min="0" id="journeyCost" placeholder="Cost">
+  </div>
+  <button class="btn secondary" style="margin-top:8px" onclick="addJourney('${s.id}')">+ Add Journey</button>
+  <div class="divider"></div>
+  <div><b>Session Total: ${fmt(total)}</b></div>
+  ${s.status==='open' ? `<button class="btn" style="margin-top:10px" onclick="openEndSession('${s.id}')">✅ End Session / Reconcile</button>`
+   : `<div class="discrepancy ${Math.abs(s.difference||0)<=0? 'ok':'bad'}">Reconciled — Difference: ${fmt(s.difference||0)}</div>`}
+  <button class="btn danger" style="margin-top:10px" onclick="deleteSession('${s.id}')">Delete Session</button>
+  `);
+  document.getElementById('advSesToggle').onchange = async (e)=>{ const s2=await dbGet('sessions',id); s2.advanced=e.target.checked; await dbPut('sessions',s2); openSessionDetail(id); };
+  renderAdvShopBlock(s);
+}
+function renderAdvShopBlock(s){
+  const el = document.getElementById('advShopBlock');
+  if(!s.advanced){ el.innerHTML=''; return; }
+  el.innerHTML = `<label>Shop Name</label><input id="shopName" value="${s.shop.name||''}">
+  <label>Shop Phone</label><input id="shopPhone" value="${s.shop.phone||''}">
+  <label>Shop Address</label><input id="shopAddr" value="${s.shop.address||''}">
+  <div class="row"><div><label>Bill Total</label><input type="number" id="billTotal" value="${s.bill.total||0}"></div>
+  <div><label>Paid</label><input type="number" id="billPaid" value="${s.bill.paid||0}"></div></div>
+  <button class="btn secondary" style="margin-top:8px" onclick="saveShopBill('${s.id}')">Save Shop / Bill Info</button>`;
+}
+async function saveShopBill(id){
+  const s = await dbGet('sessions',id);
+  s.shop = { name:document.getElementById('shopName').value, phone:document.getElementById('shopPhone').value, address:document.getElementById('shopAddr').value };
+  const total = parseInt(document.getElementById('billTotal').value)||0;
+  const paid = parseInt(document.getElementById('billPaid').value)||0;
+  s.bill = { total, paid, change: Math.max(0,paid-total) };
+  await dbPut('sessions',s); toast('Saved'); openSessionDetail(id);
+}
+function parseQuickItems(text){
+  return text.split('\n').map(l=>l.trim()).filter(Boolean).map(line=>{
+    let m = line.match(/^(.+?)[,\-–]\s*৳?\s*([\d.]+)\s*$/);
+    if(!m) m = line.match(/^(.+?)\s+৳?\s*([\d.]+)\s*$/);
+    if(!m) return null;
+    return { name:m[1].trim(), price: parseFloat(m[2]) };
+  }).filter(Boolean);
+}
+async function quickAddItems(id){
+  const text = document.getElementById('quickItems').value;
+  const parsed = parseQuickItems(text);
+  if(!parsed.length){ toast('No valid items found — use "Item, Price" per line'); return; }
+  const s = await dbGet('sessions', id);
+  s.items = s.items || [];
+  parsed.forEach(p=> s.items.push({ id:uid(), name:p.name, category:'', brand:'', unit:'', qty:1, priceUnit:p.price, total: Math.round(p.price), note:'', addToInventory:false }));
+  await dbPut('sessions', s);
+  toast(parsed.length+' item(s) added'); openSessionDetail(id);
+}
+async function removeSessionItem(id, idx){ const s = await dbGet('sessions',id); s.items.splice(idx,1); await dbPut('sessions',s); openSessionDetail(id); }
+async function removeSessionJourney(id, idx){ const s = await dbGet('sessions',id); s.journeys.splice(idx,1); await dbPut('sessions',s); openSessionDetail(id); }
+async function addJourney(id){
+  const type = document.getElementById('journeyType').value;
+  const cost = Math.max(0, parseInt(document.getElementById('journeyCost').value)||0);
+  const s = await dbGet('sessions', id);
+  s.journeys = s.journeys || [];
+  s.journeys.push({ id:uid(), type, cost, from:'', to:'' });
+  await dbPut('sessions', s);
+  toast('Journey added'); openSessionDetail(id);
+}
+async function deleteSession(id){
+  if(!confirm('Delete this shopping session? This cannot be undone.')) return;
+  await dbDelete('sessions', id); closeModal(); toast('Session deleted'); render();
+}
+async function openEndSession(id){
+  const s = await dbGet('sessions', id);
+  const total = sessionTotal(s);
+  const expected = Math.max(0, s.cashTaken - total);
+  openModal(`<h3>End Session — ${s.name}</h3>
+  <div class="card"><div>Starting cash: ${fmt(s.cashTaken)}</div><div>Total expense: ${fmt(total)}</div><div><b>Expected remaining: ${fmt(expected)}</b></div></div>
+  <label>Actual Remaining Cash (${CURRENCY_SYMBOL})</label><input type="number" min="0" id="actualCash" placeholder="${expected}">
+  <button class="btn" style="margin-top:12px" onclick="confirmEndSession('${s.id}', ${expected})">Reconcile & Close</button>`);
+}
+async function confirmEndSession(id, expected){
+  const actual = parseInt(document.getElementById('actualCash').value);
+  if(isNaN(actual)){ toast('Enter actual cash'); return; }
+  const s = await dbGet('sessions', id);
+  const total = sessionTotal(s);
+  s.status='closed'; s.endCash=actual; s.expectedCash=expected; s.difference = actual-expected;
+  await dbPut('sessions', s);
+  const itemsTotal = sessionItemsTotal(s), journeysTotal = sessionJourneysTotal(s);
+  if(itemsTotal>0) await addTransaction('Shopping', itemsTotal, 'Shopping', s.name, s.id);
+  if(journeysTotal>0) await addTransaction('Transport', journeysTotal, 'Transport', s.name+' (transport)', s.id);
+  // inventory update for items marked
+  for(const it of (s.items||[])){
+    if(it.addToInventory){
+      const inv = (await dbGetAll('inventory')).find(i=>i.name.toLowerCase()===it.name.toLowerCase());
+      if(inv){ inv.currentQty = (inv.currentQty||0) + (it.qty||1); inv.lastPurchasePrice=it.priceUnit; inv.lastPurchaseDate=todayStr(); await dbPut('inventory',inv); }
+      else { await dbPut('inventory',{ id:uid(), name:it.name, category:it.category||'Other', unit:it.unit||'', currentQty:it.qty||1, minQty:1, brand:it.brand||'', lastPurchasePrice:it.priceUnit, lastPurchaseDate:todayStr(), notes:'' }); }
+    }
+  }
+  closeModal(); toast('Session reconciled'); render();
+}
+
+/* ================= EXPENSES ================= */
+async function renderExpenses(root){
+  const expenses = (await dbGetAll('expenses')).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  root.innerHTML = `<button class="btn" onclick="openExpenseForm()">🧾 ${tr('addExpense')}</button>
+  <h2 class="section-title">All Expenses</h2>
+  ${expenses.length? expenses.map(e=>`<div class="list-item"><div><div>${e.name}</div><div class="meta">${e.category} · ${e.date} ${e.time}${e.vendor?(' · '+e.vendor):''}</div></div><div class="amt expense">-${fmt(e.amount)} <span onclick="deleteExpense('${e.id}')" style="cursor:pointer;color:var(--danger)">✕</span></div></div>`).join('') : '<div class="empty">No expenses recorded yet.</div>'}`;
+}
+async function openExpenseForm(){
+  const cats = (await dbGetAll('categories')).filter(c=>c.active);
+  openModal(`<h3>${tr('addExpense')}</h3>
+  <label>Name</label><input id="expName" placeholder="e.g. Tea">
+  <label>Amount (${CURRENCY_SYMBOL})</label><input type="number" min="0" id="expAmt">
+  <div class="row"><div><label>Date</label><input type="date" id="expDate" value="${todayStr()}"></div><div><label>Time</label><input type="time" id="expTime" value="${timeStr()}"></div></div>
+  <label>Category</label><select id="expCat">${cats.map(c=>`<option>${c.name}</option>`).join('')}</select>
+  <div class="toggle-row"><b>Advanced</b><label class="switch"><input type="checkbox" id="expAdvToggle"><span class="slider"></span></label></div>
+  <div id="expAdvBlock" style="display:none">
+    <label>Vendor / Shop</label><input id="expVendor">
+    <label>Payment Method</label><select id="expPay"><option>Cash</option><option>Other</option></select>
+    <label>Note</label><textarea id="expNote"></textarea>
+  </div>
+  <button class="btn" style="margin-top:12px" onclick="saveExpense()">Save Expense</button>`);
+  document.getElementById('expAdvToggle').onchange = (e)=>{ document.getElementById('expAdvBlock').style.display = e.target.checked?'block':'none'; };
+}
+async function saveExpense(){
+  const name = document.getElementById('expName').value.trim();
+  const amount = parseInt(document.getElementById('expAmt').value);
+  if(!name || isNaN(amount) || amount<0){ toast('Enter a valid name and amount'); return; }
+  const e = { id:uid(), name, amount, date:document.getElementById('expDate').value||todayStr(),
+    time:document.getElementById('expTime').value||timeStr(), category:document.getElementById('expCat').value,
+    vendor: document.getElementById('expVendor')?.value||'', paymentMethod: document.getElementById('expPay')?.value||'Cash',
+    note: document.getElementById('expNote')?.value||'' };
+  await dbPut('expenses', e);
+  await addTransaction('Expense', amount, e.category, name);
+  closeModal(); toast('Expense added'); render();
+}
+async function deleteExpense(id){ if(!confirm('Delete this expense?')) return; await dbDelete('expenses',id); render(); }
+
+/* ================= INCOME ================= */
+async function openIncomeForm(){
+  openModal(`<h3>${tr('addIncome')}</h3>
+  <label>Source</label><select id="incSource"><option>Salary</option><option>Freelancing</option><option>Family Contribution</option><option>Returned Money</option><option>Other</option></select>
+  <label>Amount (${CURRENCY_SYMBOL})</label><input type="number" min="0" id="incAmt">
+  <div class="row"><div><label>Date</label><input type="date" id="incDate" value="${todayStr()}"></div><div><label>Time</label><input type="time" id="incTime" value="${timeStr()}"></div></div>
+  <label>Note</label><textarea id="incNote"></textarea>
+  <button class="btn" style="margin-top:12px" onclick="saveIncome()">Save Income</button>`);
+}
+async function saveIncome(){
+  const source = document.getElementById('incSource').value;
+  const amount = parseInt(document.getElementById('incAmt').value);
+  if(isNaN(amount) || amount<0){ toast('Enter a valid amount'); return; }
+  const inc = { id:uid(), source, amount, date:document.getElementById('incDate').value||todayStr(), time:document.getElementById('incTime').value||timeStr(), note:document.getElementById('incNote').value };
+  await dbPut('incomes', inc);
+  await addTransaction('Income', amount, source, source+(inc.note?(' — '+inc.note):''));
+  closeModal(); toast('Income added'); render();
+}
+
+/* ================= INVENTORY ================= */
+let INV_FILTER = 'All';
+async function renderInventory(root){
+  let items = await dbGetAll('inventory');
+  items.sort((a,b)=>a.name.localeCompare(b.name));
+  const status = (i)=> i.currentQty<=0 ? 'Out of Stock' : (i.currentQty<=i.minQty ? 'Low Stock' : 'In Stock');
+  if(INV_FILTER!=='All') items = items.filter(i=>status(i)===INV_FILTER);
+  root.innerHTML = `<button class="btn" onclick="openInventoryForm()">📦 Add Inventory Item</button>
+  <div class="filter-tabs" style="margin-top:14px">
+    ${['All','In Stock','Low Stock','Out of Stock'].map(f=>`<button class="${INV_FILTER===f?'active':''}" onclick="setInvFilter('${f}')">${f}</button>`).join('')}
+  </div>
+  ${items.length? items.map(i=>{
+    const st = status(i);
+    return `<div class="list-item"><div><div>${i.name} ${i.brand?('('+i.brand+')'):''}</div><div class="meta">${i.currentQty}${i.unit} · min ${i.minQty}${i.unit} · ${i.category}</div></div>
+    <div><span class="badge ${st==='Low Stock'||st==='Out of Stock'?'low':''}">${st}</span> <span onclick="deleteInventory('${i.id}')" style="cursor:pointer;color:var(--danger)">✕</span></div></div>`;
+  }).join('') : '<div class="empty">No inventory items match.</div>'}`;
+}
+function setInvFilter(f){ INV_FILTER=f; render(); }
+async function openInventoryForm(){
+  const cats = (await dbGetAll('categories')).filter(c=>c.active);
+  openModal(`<h3>Add Inventory Item</h3>
+  <label>Item Name</label><input id="invName">
+  <label>Category</label><select id="invCat">${cats.map(c=>`<option>${c.name}</option>`).join('')}</select>
+  <div class="row"><div><label>Unit</label><input id="invUnit" placeholder="kg / pcs / litre"></div><div><label>Brand</label><input id="invBrand"></div></div>
+  <div class="row"><div><label>Current Qty</label><input type="number" min="0" id="invQty" value="0"></div><div><label>Minimum Qty</label><input type="number" min="0" id="invMin" value="1"></div></div>
+  <label>Notes</label><textarea id="invNotes"></textarea>
+  <button class="btn" style="margin-top:12px" onclick="saveInventory()">Save Item</button>`);
+}
+async function saveInventory(){
+  const name = document.getElementById('invName').value.trim();
+  if(!name){ toast('Enter item name'); return; }
+  const item = { id:uid(), name, category:document.getElementById('invCat').value, unit:document.getElementById('invUnit').value,
+    brand:document.getElementById('invBrand').value, currentQty: Math.max(0,parseFloat(document.getElementById('invQty').value)||0),
+    minQty: Math.max(0,parseFloat(document.getElementById('invMin').value)||0), notes:document.getElementById('invNotes').value,
+    lastPurchasePrice:0, lastPurchaseDate:'' };
+  await dbPut('inventory', item); closeModal(); toast('Item added'); render();
+}
+async function deleteInventory(id){ if(!confirm('Delete this inventory item?')) return; await dbDelete('inventory',id); render(); }
+
+/* ================= REPORTS ================= */
+async function renderReports(root){
+  const txns = await dbGetAll('transactions');
+  const sessions = await dbGetAll('sessions');
+  const today = todayStr();
+  const month = today.slice(0,7);
+  const todayT = txns.filter(t=>t.date===today);
+  const monthT = txns.filter(t=>t.date.startsWith(month));
+  const sum = (arr,types)=> arr.filter(t=>types.includes(t.type)).reduce((a,b)=>a+b.amount,0);
+
+  const dIncome = sum(todayT,['Income']), dExpense = sum(todayT,['Expense','Shopping','Transport']);
+  const dShopping = sum(todayT,['Shopping']), dTransport = sum(todayT,['Transport']), dOther = sum(todayT,['Expense']);
+  const cc = await getCurrentCash(); const {grand} = cashTotals(cc);
+
+  const mIncome = sum(monthT,['Income']), mExpense = sum(monthT,['Expense','Shopping','Transport']);
+  const byCat = {};
+  monthT.filter(t=>t.type!=='Income'&&t.type!=='Cash Snapshot').forEach(t=>{ byCat[t.category]=(byCat[t.category]||0)+t.amount; });
+  const maxCat = Math.max(1,...Object.values(byCat));
+
+  const closedSessions = sessions.filter(s=>s.status==='closed');
+  const totalSessionAmt = closedSessions.reduce((a,s)=>a+sessionTotal(s),0);
+  const avgSession = closedSessions.length? Math.round(totalSessionAmt/closedSessions.length):0;
+  const itemCounts = {};
+  sessions.forEach(s=>(s.items||[]).forEach(it=>{ itemCounts[it.name]=(itemCounts[it.name]||0)+1; }));
+  const topItems = Object.entries(itemCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  root.innerHTML = `
+  <h2 class="section-title">Daily (${today})</h2>
+  <div class="card"><div>Income: ${fmt(dIncome)}</div><div>Total Expense: ${fmt(dExpense)}</div><div>Shopping: ${fmt(dShopping)}</div><div>Transport: ${fmt(dTransport)}</div><div>Closing Cash: ${fmt(grand)}</div></div>
+
+  <h2 class="section-title">Monthly (${month})</h2>
+  <div class="card"><div>Total Income: ${fmt(mIncome)}</div><div>Total Expense: ${fmt(mExpense)}</div></div>
+  <div class="card">
+    ${Object.entries(byCat).length? Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>`
+    <div class="bar-row"><div class="bar-label"><span>${cat}</span><span>${fmt(amt)}</span></div><div class="bar-track"><div class="bar-fill" style="width:${(amt/maxCat*100)}%"></div></div></div>`).join('') : '<div class="empty">No category data this month.</div>'}
+  </div>
+
+  <h2 class="section-title">Shopping</h2>
+  <div class="card"><div>Sessions: ${closedSessions.length}</div><div>Total Shopping Amount: ${fmt(totalSessionAmt)}</div><div>Average per Session: ${fmt(avgSession)}</div>
+  ${topItems.length?('<div style="margin-top:8px">Most Purchased: '+topItems.map(t=>t[0]+' ×'+t[1]).join(', ')+'</div>'):''}</div>
+
+  <h2 class="section-title">Cash</h2>
+  <div class="card"><div>Cash Added (month): ${fmt(mIncome)}</div><div>Expenses (month): ${fmt(mExpense)}</div><div>Physical Closing Cash: ${fmt(grand)}</div></div>
+  `;
+}
+
+/* ================= TRANSACTIONS ================= */
+let TXN_FILTER='All', TXN_SEARCH='', TXN_SORT='date_desc';
+async function renderTransactions(root){
+  let txns = await dbGetAll('transactions');
+  if(TXN_FILTER!=='All') txns = txns.filter(t=>t.type===TXN_FILTER);
+  if(TXN_SEARCH) txns = txns.filter(t=> (t.description+t.category).toLowerCase().includes(TXN_SEARCH.toLowerCase()));
+  txns.sort((a,b)=>{
+    const key = a.date+a.time, key2 = b.date+b.time;
+    if(TXN_SORT==='date_desc') return key2.localeCompare(key);
+    if(TXN_SORT==='date_asc') return key.localeCompare(key2);
+    if(TXN_SORT==='amt_desc') return b.amount-a.amount;
+    if(TXN_SORT==='amt_asc') return a.amount-b.amount;
+    return 0;
+  });
+  const types = ['All','Income','Expense','Shopping','Transport','Cash Snapshot'];
+  root.innerHTML = `
+  <input id="txnSearch" placeholder="Search transactions..." value="${TXN_SEARCH}" style="margin-bottom:10px">
+  <div class="filter-tabs">${types.map(t=>`<button class="${TXN_FILTER===t?'active':''}" onclick="setTxnFilter('${t}')">${t}</button>`).join('')}</div>
+  <select id="txnSort" style="margin-bottom:10px">
+    <option value="date_desc" ${TXN_SORT==='date_desc'?'selected':''}>Newest First</option>
+    <option value="date_asc" ${TXN_SORT==='date_asc'?'selected':''}>Oldest First</option>
+    <option value="amt_desc" ${TXN_SORT==='amt_desc'?'selected':''}>Amount High→Low</option>
+    <option value="amt_asc" ${TXN_SORT==='amt_asc'?'selected':''}>Amount Low→High</option>
+  </select>
+  ${txns.length? txns.map(t=>{
+    const isIncome = t.type==='Income';
+    return `<div class="list-item"><div><div>${t.description||t.type}</div><div class="meta">${t.type} · ${t.category} · ${t.date} ${t.time}</div></div>
+    <div style="text-align:right"><div class="amt ${isIncome?'income':'expense'}">${isIncome?'+':(t.type==='Cash Snapshot'?'':'-')}${fmt(t.amount)}</div><span onclick="deleteTxn('${t.id}')" style="cursor:pointer;color:var(--danger);font-size:12px">delete</span></div></div>`;
+  }).join('') : '<div class="empty">No matching transactions.</div>'}
+  `;
+  document.getElementById('txnSearch').oninput = (e)=>{ TXN_SEARCH=e.target.value; renderTransactions(document.getElementById('viewRoot')); };
+  document.getElementById('txnSort').onchange = (e)=>{ TXN_SORT=e.target.value; renderTransactions(document.getElementById('viewRoot')); };
+}
+function setTxnFilter(t){ TXN_FILTER=t; render(); }
+async function deleteTxn(id){ if(!confirm('Delete this transaction record? This does not undo linked session/expense records.')) return; await dbDelete('transactions',id); render(); }
+
+/* ================= SETTINGS ================= */
+async function renderSettings(root){
+  const settings = await dbGet('settings','app');
+  const cats = await dbGetAll('categories');
+  root.innerHTML = `
+  <h2 class="section-title">Language</h2>
+  <div class="card"><button class="btn secondary" onclick="document.getElementById('langToggle').click()">Current: ${LANG==='en'?'English':'বাংলা'} — tap to switch</button></div>
+
+  <h2 class="section-title">Categories</h2>
+  <div class="card" id="catList">${cats.map(c=>`<div class="list-item"><div>${c.name} ${!c.active?'<span class="badge">disabled</span>':''}</div>
+    <div class="row" style="flex:none;gap:6px"><button class="btn small secondary" onclick="renameCategory('${c.id}')">Rename</button>
+    <button class="btn small secondary" onclick="toggleCategory('${c.id}')">${c.active?'Disable':'Enable'}</button>
+    <button class="btn small danger" onclick="deleteCategory('${c.id}')">Del</button></div></div>`).join('')}
+  <div class="row" style="margin-top:8px"><input id="newCatName" placeholder="New category"><button class="btn small" style="flex:none" onclick="addCategory()">Add</button></div></div>
+
+  <h2 class="section-title">Data</h2>
+  <div class="card">
+    <button class="btn secondary" style="margin-bottom:8px" onclick="exportJSON()">⬇️ Export JSON (Full Backup)</button>
+    <button class="btn secondary" style="margin-bottom:8px" onclick="exportCSV()">⬇️ Export CSV (Transactions)</button>
+    <label>Import File</label><input type="file" id="importFile" accept=".json">
+    <div class="toggle-row"><span>Replace instead of Merge</span><label class="switch"><input type="checkbox" id="importReplace"><span class="slider"></span></label></div>
+    <button class="btn secondary" style="margin-top:6px" onclick="doImport()">⬆️ Import</button>
+    <div class="divider"></div>
+    <div class="meta">Last backup: ${settings?.lastBackup? settings.lastBackup.slice(0,16).replace('T',' ') : 'never'}</div>
+    <button class="btn secondary" style="margin-top:8px" onclick="backupNow()">📦 Backup Now</button>
+  </div>
+
+  <h2 class="section-title">Demo & Reset</h2>
+  <div class="card">
+    <button class="btn secondary" style="margin-bottom:8px" onclick="loadDemoData()">🎲 Load Demo Data</button>
+    <button class="btn danger" onclick="resetAllData()">🗑️ Delete All Data</button>
+  </div>
+
+  <h2 class="section-title">About</h2>
+  <div class="card meta">Home Inventory — offline-first household cash, shopping & inventory tracker prototype. Schema v1. Device ID: ${DEVICE_ID}</div>
+  `;
+}
+async function addCategory(){
+  const name = document.getElementById('newCatName').value.trim();
+  if(!name){ return; }
+  await dbPut('categories',{id:uid(),name,active:true}); render();
+}
+async function renameCategory(id){
+  const c = await dbGet('categories',id);
+  const name = prompt('Rename category', c.name);
+  if(name && name.trim()){ c.name=name.trim(); await dbPut('categories',c); render(); }
+}
+async function toggleCategory(id){ const c = await dbGet('categories',id); c.active=!c.active; await dbPut('categories',c); render(); }
+async function deleteCategory(id){ if(!confirm('Delete this category?')) return; await dbDelete('categories',id); render(); }
+
+/* ---- Export ---- */
+function downloadFile(filename, content, mime){
+  const blob = new Blob([content],{type:mime});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  URL.revokeObjectURL(a.href);
+}
+async function buildFullExport(){
+  const data = { schemaVersion:1, exportedAt: now(), deviceId: DEVICE_ID, metadata:{app:'Home Inventory'} };
+  for(const s of STORES){ data[s] = await dbGetAll(s); }
+  return data;
+}
+async function exportJSON(){
+  const data = await buildFullExport();
+  downloadFile(`home-inventory-export-${todayStr()}.json`, JSON.stringify(data,null,2), 'application/json');
+  toast('Exported JSON');
+}
+function csvEscape(v){ if(v==null) return ''; const s=String(v).replace(/"/g,'""'); return /[",\n]/.test(s)?`"${s}"`:s; }
+async function exportCSV(){
+  const txns = await dbGetAll('transactions');
+  const header = ['id','type','amount','category','date','time','sessionId','description','createdAt','updatedAt'];
+  const rows = [header.join(',')].concat(txns.map(t=>header.map(h=>csvEscape(t[h])).join(',')));
+  downloadFile(`home-inventory-transactions-${todayStr()}.csv`, rows.join('\n'), 'text/csv');
+  toast('Exported CSV');
+}
+async function backupNow(){
+  await exportJSON();
+  const s = await dbGet('settings','app'); s.lastBackup = now(); await dbPut('settings',s); render();
+}
+async function resetAllData(){
+  if(!confirm('This will permanently delete ALL data on this device. Continue?')) return;
+  if(!confirm('Are you absolutely sure? This cannot be undone.')) return;
+  for(const s of STORES) await dbClear(s);
+  await seedIfEmpty(); toast('All data reset'); render();
+}
+
+/* ---- Import / Merge ---- */
+function validateImportShape(data){
+  if(typeof data!=='object'||!data) return false;
+  if(!('schemaVersion' in data)) return false;
+  return STORES.some(s=>Array.isArray(data[s]));
+}
+async function doImport(){
+  const file = document.getElementById('importFile').files[0];
+  if(!file){ toast('Choose a JSON file first'); return; }
+  const replace = document.getElementById('importReplace').checked;
+  const text = await file.text();
+  let data;
+  try{ data = JSON.parse(text); }catch(e){ toast('Invalid JSON file'); return; }
+  if(!validateImportShape(data)){ toast('File does not look like a Home Inventory export'); return; }
+  if(replace && !confirm('Replace ALL local data with this import? This cannot be undone.')) return;
+
+  let imported=0,newC=0,updated=0,skipped=0,conflicts=0;
+  for(const storeName of STORES){
+    if(!Array.isArray(data[storeName])) continue;
+    if(replace) await dbClear(storeName);
+    for(const rec of data[storeName]){
+      if(!rec || !rec.id){ skipped++; continue; }
+      imported++;
+      if(replace){ await dbPut(storeName, rec); newC++; continue; }
+      const existing = await dbGet(storeName, rec.id);
+      if(!existing){ await dbPut(storeName, rec); newC++; }
+      else{
+        const exTime = existing.updatedAt || existing.createdAt || '';
+        const inTime = rec.updatedAt || rec.createdAt || '';
+        if(inTime > exTime){ await dbPut(storeName, rec); updated++; }
+        else{ skipped++; }
+      }
+    }
+  }
+  toast('Import complete'); closeModal();
+  openModal(`<h3>Merge Summary</h3><div class="card">
+    <div>Imported: ${imported}</div><div>New: ${newC}</div><div>Updated: ${updated}</div>
+    <div>Skipped: ${skipped}</div><div>Conflicts: ${conflicts}</div>
+    <button class="btn" style="margin-top:12px" onclick="closeModal();render()">Done</button></div>`);
+}
+
+/* ---- Demo Data ---- */
+async function loadDemoData(){
+  if(!confirm('Load demo data? This adds sample records alongside existing data.')) return;
+  const cc = await getCurrentCash();
+  cc.denoms = {1000:2,500:2,200:0,100:5,50:2,20:3,10:2,5:3,2:6,1:5};
+  await dbPut('currentCash', cc);
+  const s = { id:uid(), name:'First Bazar Today', date:todayStr(), startTime:timeStr(), cashTaken:2000, status:'closed',
+    items:[
+      {id:uid(),name:'Rice',category:'Grocery',brand:'',unit:'kg',qty:5,priceUnit:110,total:550,note:'',addToInventory:true},
+      {id:uid(),name:'Potato',category:'Grocery',brand:'',unit:'kg',qty:3,priceUnit:40,total:120,note:'',addToInventory:true},
+      {id:uid(),name:'Oil',category:'Grocery',brand:'',unit:'litre',qty:2,priceUnit:180,total:360,note:'',addToInventory:true},
+      {id:uid(),name:'Vegetables',category:'Grocery',brand:'',unit:'',qty:1,priceUnit:150,total:150,note:'',addToInventory:false}
+    ],
+    journeys:[{id:uid(),type:'Rickshaw',cost:40,from:'Home',to:'Bazar'}],
+    advanced:true, shop:{name:'Local Bazar',phone:'',address:''}, bill:{total:1180,paid:1200,change:20},
+    endCash:780, expectedCash:780, difference:0, createdAt:now() };
+  await dbPut('sessions', s);
+  await addTransaction('Shopping', 1180, 'Shopping', s.name, s.id);
+  await addTransaction('Transport', 40, 'Transport', s.name+' (transport)', s.id);
+  await dbPut('incomes',{id:uid(),source:'Salary',amount:35000,date:todayStr(),time:'09:00',note:'Monthly salary'});
+  await addTransaction('Income', 35000, 'Salary', 'Monthly salary');
+  await dbPut('expenses',{id:uid(),name:'Mobile Recharge',amount:100,date:todayStr(),time:timeStr(),category:'Utility',vendor:'',paymentMethod:'Cash',note:''});
+  await addTransaction('Expense', 100, 'Utility', 'Mobile Recharge');
+  for(const inv of [
+    {name:'Rice',category:'Grocery',unit:'kg',currentQty:5,minQty:2,brand:'',lastPurchasePrice:110,lastPurchaseDate:todayStr(),notes:''},
+    {name:'Salt',category:'Grocery',unit:'kg',currentQty:1,minQty:2,brand:'',lastPurchasePrice:35,lastPurchaseDate:todayStr(),notes:''},
+    {name:'Soap',category:'Household',unit:'pcs',currentQty:0,minQty:2,brand:'',lastPurchasePrice:45,lastPurchaseDate:todayStr(),notes:''}
+  ]){ await dbPut('inventory',{id:uid(),...inv}); }
+  toast('Demo data loaded'); render();
+}
+
+/* ================= APP INIT ================= */
+async function init(){
+  await openDB();
+  await seedIfEmpty();
+  applyI18n();
+  await render();
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+  }
+}
+init();
+</script>
+</body>
+</html>
+
