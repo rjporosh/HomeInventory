@@ -162,7 +162,11 @@ function toast(msg){
 /* ================= DENOMINATIONS ================= */
 const NOTES = [1000,500,200,100,50,20,10,5,2];
 const COINS = [5,2,1];
-const DEFAULT_CATEGORIES = ["Grocery","Food","Transport","Medicine","Household","Utility","Shopping","Personal","Entertainment","Other"];
+const DEFAULT_CATEGORIES = [
+  {en:"Grocery", bn:"মুদি"}, {en:"Food", bn:"খাবার"}, {en:"Transport", bn:"যাতায়াত"},
+  {en:"Medicine", bn:"ওষুধ"}, {en:"Household", bn:"গৃহস্থালী"}, {en:"Utility", bn:"ইউটিলিটি"},
+  {en:"Shopping", bn:"কেনাকাটা"}, {en:"Personal", bn:"ব্যক্তিগত"}, {en:"Entertainment", bn:"বিনোদন"}, {en:"Other", bn:"অন্যান্য"}
+];
 
 /* ================= INDEXEDDB LAYER ================= */
 const DB_NAME = 'homeInventoryDB', DB_VERSION = 1;
@@ -197,7 +201,7 @@ let STATE = { view:'dashboard', advCash:false, advShopping:false, categories:[],
 async function seedIfEmpty(){
   const cats = await dbGetAll('categories');
   if(cats.length===0){
-    for(const c of DEFAULT_CATEGORIES) await dbPut('categories',{id:uid(),name:c,active:true});
+    for(const c of DEFAULT_CATEGORIES) await dbPut('categories',{id:uid(),nameEn:c.en,nameBn:c.bn,parentId:null,active:true});
   }
   const cc = await dbGet('currentCash','current');
   if(!cc){
@@ -214,6 +218,46 @@ function cashTotals(cc){
   NOTES.forEach(d=>{ notesTotal += d * (cc.denoms[d]||0); });
   COINS.forEach(d=>{ coinsTotal += d * (cc.denoms[d]||0); });
   return { notesTotal, coinsTotal, grand: notesTotal+coinsTotal };
+}
+
+/* ================= CATEGORY HIERARCHY HELPERS ================= */
+let CAT_CACHE = [];
+async function loadCatCache(){ CAT_CACHE = await dbGetAll('categories'); return CAT_CACHE; }
+function catById(id, cats=CAT_CACHE){ return cats.find(c=>c.id===id) || null; }
+function catDisplayName(cat){ if(!cat) return ''; return LANG==='bn' ? (cat.nameBn || cat.nameEn) : (cat.nameEn || cat.nameBn); }
+function catBreadcrumb(id, cats=CAT_CACHE, sep=' › '){
+  const path = []; let cur = catById(id, cats); let guard=0;
+  while(cur && guard++<10){ path.unshift(catDisplayName(cur)); cur = cur.parentId ? catById(cur.parentId, cats) : null; }
+  return path.join(sep);
+}
+function normName(s){ return (s||'').trim().toLowerCase(); }
+function findCategoryDuplicate(nameEn, nameBn, cats=CAT_CACHE, excludeId=null){
+  const en = normName(nameEn), bn = normName(nameBn);
+  if(!en && !bn) return null;
+  return cats.find(c=>{
+    if(c.id===excludeId) return false;
+    const cEn = normName(c.nameEn), cBn = normName(c.nameBn);
+    return (en && (cEn===en || cBn===en)) || (bn && (cEn===bn || cBn===bn));
+  }) || null;
+}
+function childrenOf(parentId, cats=CAT_CACHE){ return cats.filter(c=> (c.parentId||null) === (parentId||null)); }
+function flattenCategoryTree(cats=CAT_CACHE){
+  // returns [{cat, depth, breadcrumb}] in display order (roots then children, depth-first)
+  const out = [];
+  function walk(parentId, depth){
+    childrenOf(parentId, cats).sort((a,b)=> catDisplayName(a).localeCompare(catDisplayName(b))).forEach(c=>{
+      out.push({ cat:c, depth, breadcrumb: catBreadcrumb(c.id, cats) });
+      walk(c.id, depth+1);
+    });
+  }
+  walk(null, 0);
+  return out;
+}
+function categorySelectOptions(cats, selectedId, includeBlank){
+  const flat = flattenCategoryTree(cats).filter(f=>f.cat.active);
+  let html = includeBlank ? `<option value="">— Select category —</option>` : '';
+  html += flat.map(f=>`<option value="${f.cat.id}" ${f.cat.id===selectedId?'selected':''}>${'— '.repeat(f.depth)}${catDisplayName(f.cat)}</option>`).join('');
+  return html;
 }
 
 /* ================= ROUTER ================= */
@@ -243,6 +287,7 @@ function openQuickAddMenu(){
 }
 
 async function render(){
+  await loadCatCache();
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   const main = document.getElementById('main');
   main.innerHTML = '<div class="view active" id="viewRoot"></div>';
@@ -536,12 +581,13 @@ async function renderExpenses(root){
   ${expenses.length? expenses.map(e=>`<div class="list-item"><div><div>${e.name}</div><div class="meta">${e.category} · ${e.date} ${e.time}${e.vendor?(' · '+e.vendor):''}</div></div><div class="amt expense">-${fmt(e.amount)} <span onclick="deleteExpense('${e.id}')" style="cursor:pointer;color:var(--danger)">✕</span></div></div>`).join('') : '<div class="empty">No expenses recorded yet.</div>'}`;
 }
 async function openExpenseForm(){
-  const cats = (await dbGetAll('categories')).filter(c=>c.active);
+  await loadCatCache();
   openModal(`<h3>${tr('addExpense')}</h3>
   <label>Name</label><input id="expName" placeholder="e.g. Tea">
   <label>Amount (${CURRENCY_SYMBOL})</label><input type="number" min="0" id="expAmt">
   <div class="row"><div><label>Date</label><input type="date" id="expDate" value="${todayStr()}"></div><div><label>Time</label><input type="time" id="expTime" value="${timeStr()}"></div></div>
-  <label>Category</label><select id="expCat">${cats.map(c=>`<option>${c.name}</option>`).join('')}</select>
+  <label>Category</label><select id="expCat">${categorySelectOptions(CAT_CACHE)}</select>
+  <div class="meta" id="expCatBreadcrumb"></div>
   <div class="toggle-row"><b>Advanced</b><label class="switch"><input type="checkbox" id="expAdvToggle"><span class="slider"></span></label></div>
   <div id="expAdvBlock" style="display:none">
     <label>Vendor / Shop</label><input id="expVendor">
@@ -550,17 +596,21 @@ async function openExpenseForm(){
   </div>
   <button class="btn" style="margin-top:12px" onclick="saveExpense()">Save Expense</button>`);
   document.getElementById('expAdvToggle').onchange = (e)=>{ document.getElementById('expAdvBlock').style.display = e.target.checked?'block':'none'; };
+  const updateBc = ()=>{ document.getElementById('expCatBreadcrumb').textContent = catBreadcrumb(document.getElementById('expCat').value); };
+  document.getElementById('expCat').onchange = updateBc; updateBc();
 }
 async function saveExpense(){
   const name = document.getElementById('expName').value.trim();
   const amount = parseInt(document.getElementById('expAmt').value);
   if(!name || isNaN(amount) || amount<0){ toast('Enter a valid name and amount'); return; }
+  const categoryId = document.getElementById('expCat').value;
+  const categoryPath = catBreadcrumb(categoryId) || 'Other';
   const e = { id:uid(), name, amount, date:document.getElementById('expDate').value||todayStr(),
-    time:document.getElementById('expTime').value||timeStr(), category:document.getElementById('expCat').value,
+    time:document.getElementById('expTime').value||timeStr(), categoryId, category: categoryPath,
     vendor: document.getElementById('expVendor')?.value||'', paymentMethod: document.getElementById('expPay')?.value||'Cash',
     note: document.getElementById('expNote')?.value||'' };
   await dbPut('expenses', e);
-  await addTransaction('Expense', amount, e.category, name);
+  await addTransaction('Expense', amount, categoryPath, name);
   closeModal(); toast('Expense added'); render();
 }
 async function deleteExpense(id){ if(!confirm('Delete this expense?')) return; await dbDelete('expenses',id); render(); }
@@ -603,10 +653,10 @@ async function renderInventory(root){
 }
 function setInvFilter(f){ INV_FILTER=f; render(); }
 async function openInventoryForm(){
-  const cats = (await dbGetAll('categories')).filter(c=>c.active);
+  await loadCatCache();
   openModal(`<h3>Add Inventory Item</h3>
   <label>Item Name</label><input id="invName">
-  <label>Category</label><select id="invCat">${cats.map(c=>`<option>${c.name}</option>`).join('')}</select>
+  <label>Category</label><select id="invCat">${categorySelectOptions(CAT_CACHE)}</select>
   <div class="row"><div><label>Unit</label><input id="invUnit" placeholder="kg / pcs / litre"></div><div><label>Brand</label><input id="invBrand"></div></div>
   <div class="row"><div><label>Current Qty</label><input type="number" min="0" id="invQty" value="0"></div><div><label>Minimum Qty</label><input type="number" min="0" id="invMin" value="1"></div></div>
   <label>Notes</label><textarea id="invNotes"></textarea>
@@ -615,7 +665,8 @@ async function openInventoryForm(){
 async function saveInventory(){
   const name = document.getElementById('invName').value.trim();
   if(!name){ toast('Enter item name'); return; }
-  const item = { id:uid(), name, category:document.getElementById('invCat').value, unit:document.getElementById('invUnit').value,
+  const categoryId = document.getElementById('invCat').value;
+  const item = { id:uid(), name, categoryId, category: catBreadcrumb(categoryId)||'Other', unit:document.getElementById('invUnit').value,
     brand:document.getElementById('invBrand').value, currentQty: Math.max(0,parseFloat(document.getElementById('invQty').value)||0),
     minQty: Math.max(0,parseFloat(document.getElementById('invMin').value)||0), notes:document.getElementById('invNotes').value,
     lastPurchasePrice:0, lastPurchaseDate:'' };
@@ -714,11 +765,19 @@ async function renderSettings(root){
   <div class="card"><button class="btn secondary" onclick="document.getElementById('langToggle').click()">Current: ${LANG==='en'?'English':'বাংলা'} — tap to switch</button></div>
 
   <h2 class="section-title">Categories</h2>
-  <div class="card" id="catList">${cats.map(c=>`<div class="list-item"><div>${c.name} ${!c.active?'<span class="badge">disabled</span>':''}</div>
-    <div class="row" style="flex:none;gap:6px"><button class="btn small secondary" onclick="renameCategory('${c.id}')">Rename</button>
-    <button class="btn small secondary" onclick="toggleCategory('${c.id}')">${c.active?'Disable':'Enable'}</button>
-    <button class="btn small danger" onclick="deleteCategory('${c.id}')">Del</button></div></div>`).join('')}
-  <div class="row" style="margin-top:8px"><input id="newCatName" placeholder="New category"><button class="btn small" style="flex:none" onclick="addCategory()">Add</button></div></div>
+  <div class="card" id="catList">
+    ${flattenCategoryTree(cats).map(f=>{ const c=f.cat;
+      return `<div class="list-item" style="padding-left:${10+f.depth*16}px">
+        <div><div>${f.depth>0?'↳ ':''}${catDisplayName(c)} ${c.nameBn && LANG==='en' ? `<span class="meta">(${c.nameBn})</span>`:''}${!c.active?'<span class="badge" style="margin-left:6px">disabled</span>':''}</div>
+        <div class="meta">${f.breadcrumb}</div></div>
+        <div class="row" style="flex:none;gap:5px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn small secondary" onclick="openSubcategoryForm('${c.id}')">+ Sub</button>
+        <button class="btn small secondary" onclick="openRenameCategory('${c.id}')">Edit</button>
+        <button class="btn small secondary" onclick="toggleCategory('${c.id}')">${c.active?'Disable':'Enable'}</button>
+        <button class="btn small danger" onclick="deleteCategory('${c.id}')">Del</button></div></div>`;
+    }).join('') || '<div class="empty">No categories yet.</div>'}
+  </div>
+  <button class="btn secondary" onclick="openSubcategoryForm(null)">+ Add Category</button>
 
   <h2 class="section-title">Data</h2>
   <div class="card">
@@ -742,18 +801,73 @@ async function renderSettings(root){
   <div class="card meta">Home Inventory — offline-first household cash, shopping & inventory tracker prototype. Schema v1. Device ID: ${DEVICE_ID}</div>
   `;
 }
-async function addCategory(){
-  const name = document.getElementById('newCatName').value.trim();
-  if(!name){ return; }
-  await dbPut('categories',{id:uid(),name,active:true}); render();
+async function openSubcategoryForm(parentId){
+  await loadCatCache();
+  const parentBc = parentId ? catBreadcrumb(parentId) : null;
+  openModal(`<h3>${parentId ? 'Add Subcategory' : 'Add Category'}</h3>
+  ${parentBc ? `<div class="meta">Under: ${parentBc}</div>` : ''}
+  <label>Name (English)</label><input id="newCatEn" placeholder="e.g. Vegetables">
+  <label>Name (Bengali)</label><input id="newCatBn" placeholder="e.g. সবজি">
+  <label>Parent Category</label><select id="newCatParent">
+    <option value="">— None (top-level) —</option>
+    ${categorySelectOptions(CAT_CACHE, parentId||'')}
+  </select>
+  <div id="catDupWarning" class="meta" style="color:var(--warn)"></div>
+  <button class="btn" style="margin-top:12px" onclick="saveNewCategory()">Save Category</button>`);
+  const checkDup = ()=>{
+    const en = document.getElementById('newCatEn').value, bn = document.getElementById('newCatBn').value;
+    const dup = findCategoryDuplicate(en, bn);
+    document.getElementById('catDupWarning').textContent = dup ? `Already exists: ${catBreadcrumb(dup.id)} — won't create a duplicate.` : '';
+  };
+  document.getElementById('newCatEn').oninput = checkDup;
+  document.getElementById('newCatBn').oninput = checkDup;
 }
-async function renameCategory(id){
-  const c = await dbGet('categories',id);
-  const name = prompt('Rename category', c.name);
-  if(name && name.trim()){ c.name=name.trim(); await dbPut('categories',c); render(); }
+async function saveNewCategory(){
+  const nameEn = document.getElementById('newCatEn').value.trim();
+  const nameBn = document.getElementById('newCatBn').value.trim();
+  const parentId = document.getElementById('newCatParent').value || null;
+  if(!nameEn && !nameBn){ toast('Enter a category name'); return; }
+  await loadCatCache();
+  const dup = findCategoryDuplicate(nameEn, nameBn);
+  if(dup){ toast(`Already exists under: ${catBreadcrumb(dup.id)}`); closeModal(); render(); return; }
+  await dbPut('categories',{id:uid(), nameEn, nameBn, parentId, active:true});
+  closeModal(); toast('Category added'); render();
+}
+async function openRenameCategory(id){
+  await loadCatCache();
+  const c = catById(id);
+  openModal(`<h3>Edit Category</h3><div class="meta">${catBreadcrumb(id)}</div>
+  <label>Name (English)</label><input id="editCatEn" value="${c.nameEn||''}">
+  <label>Name (Bengali)</label><input id="editCatBn" value="${c.nameBn||''}">
+  <div id="editCatDupWarning" class="meta" style="color:var(--warn)"></div>
+  <button class="btn" style="margin-top:12px" onclick="saveRenameCategory('${id}')">Save</button>`);
+  const checkDup = ()=>{
+    const en = document.getElementById('editCatEn').value, bn = document.getElementById('editCatBn').value;
+    const dup = findCategoryDuplicate(en, bn, CAT_CACHE, id);
+    document.getElementById('editCatDupWarning').textContent = dup ? `Conflicts with existing: ${catBreadcrumb(dup.id)}` : '';
+  };
+  document.getElementById('editCatEn').oninput = checkDup;
+  document.getElementById('editCatBn').oninput = checkDup;
+}
+async function saveRenameCategory(id){
+  const nameEn = document.getElementById('editCatEn').value.trim();
+  const nameBn = document.getElementById('editCatBn').value.trim();
+  if(!nameEn && !nameBn){ toast('Enter a category name'); return; }
+  await loadCatCache();
+  const dup = findCategoryDuplicate(nameEn, nameBn, CAT_CACHE, id);
+  if(dup){ toast(`Already exists under: ${catBreadcrumb(dup.id)}`); return; }
+  const c = await dbGet('categories', id);
+  c.nameEn = nameEn; c.nameBn = nameBn;
+  await dbPut('categories', c);
+  closeModal(); toast('Category updated'); render();
 }
 async function toggleCategory(id){ const c = await dbGet('categories',id); c.active=!c.active; await dbPut('categories',c); render(); }
-async function deleteCategory(id){ if(!confirm('Delete this category?')) return; await dbDelete('categories',id); render(); }
+async function deleteCategory(id){
+  await loadCatCache();
+  if(childrenOf(id).length){ toast('Delete or move subcategories first'); return; }
+  if(!confirm('Delete this category?')) return;
+  await dbDelete('categories',id); render();
+}
 
 /* ---- Export ---- */
 function downloadFile(filename, content, mime){
