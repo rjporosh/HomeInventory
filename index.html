@@ -120,6 +120,7 @@ nav.bottomnav .ic{font-size:18px;}
 <div class="modal-bg" id="modalBg"><div class="modal" id="modalBody"></div></div>
 <div class="toast" id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="window._xlsxFailed=true"></script>
 <script>
 /* ================= CONFIG / I18N ================= */
 const CURRENCY_SYMBOL = "৳";
@@ -782,10 +783,13 @@ async function renderSettings(root){
   <h2 class="section-title">Data</h2>
   <div class="card">
     <button class="btn secondary" style="margin-bottom:8px" onclick="exportJSON()">⬇️ Export JSON (Full Backup)</button>
-    <button class="btn secondary" style="margin-bottom:8px" onclick="exportCSV()">⬇️ Export CSV (Transactions)</button>
-    <label>Import File</label><input type="file" id="importFile" accept=".json">
-    <div class="toggle-row"><span>Replace instead of Merge</span><label class="switch"><input type="checkbox" id="importReplace"><span class="slider"></span></label></div>
-    <button class="btn secondary" style="margin-top:6px" onclick="doImport()">⬆️ Import</button>
+    <button class="btn secondary" style="margin-bottom:8px" onclick="exportExcel()">⬇️ Export Excel — Categories, Expenses, Sessions</button>
+    <button class="btn secondary" style="margin-bottom:8px" onclick="exportCSVAll()">⬇️ Export CSV — Categories, Expenses, Sessions</button>
+    <button class="btn secondary" style="margin-bottom:8px" onclick="exportCSV()">⬇️ Export CSV — Transaction Ledger</button>
+    <label>Import File (.json / .xlsx / .csv)</label><input type="file" id="importFile" accept=".json,.xlsx,.xls,.csv">
+    <div class="toggle-row"><span>Replace instead of Merge <span class="meta">(JSON only)</span></span><label class="switch"><input type="checkbox" id="importReplace"><span class="slider"></span></label></div>
+    <button class="btn secondary" style="margin-top:6px" onclick="doImport()">⬆️ Import (auto-detects type)</button>
+    <div class="meta" style="margin-top:6px">Excel & CSV always merge by ID — newest wins, categories never duplicate.</div>
     <div class="divider"></div>
     <div class="meta">Last backup: ${settings?.lastBackup? settings.lastBackup.slice(0,16).replace('T',' ') : 'never'}</div>
     <button class="btn secondary" style="margin-top:8px" onclick="backupNow()">📦 Backup Now</button>
@@ -893,6 +897,163 @@ async function exportCSV(){
   downloadFile(`home-inventory-transactions-${todayStr()}.csv`, rows.join('\n'), 'text/csv');
   toast('Exported CSV');
 }
+/* ---- Excel export/import (Categories, Expenses, Sessions) ---- */
+function xlsxReady(){ return typeof XLSX !== 'undefined'; }
+async function exportExcel(){
+  if(!xlsxReady()){ toast('Excel needs internet the first time to load the library'); return; }
+  const categories = await dbGetAll('categories');
+  const expenses = await dbGetAll('expenses');
+  const sessions = await dbGetAll('sessions');
+  await loadCatCache();
+  const catRows = categories.map(c=>({ id:c.id, nameEn:c.nameEn||'', nameBn:c.nameBn||'', parentId:c.parentId||'', breadcrumb:catBreadcrumb(c.id,categories), active:c.active, createdAt:c.createdAt||'', updatedAt:c.updatedAt||'' }));
+  const expRows = expenses.map(e=>({ id:e.id, name:e.name, amount:e.amount, categoryId:e.categoryId||'', category:e.category||'', date:e.date, time:e.time, vendor:e.vendor||'', paymentMethod:e.paymentMethod||'', note:e.note||'', createdAt:e.createdAt||'', updatedAt:e.updatedAt||'' }));
+  const sesRows = sessions.map(s=>({ id:s.id, name:s.name, date:s.date, startTime:s.startTime, cashTaken:s.cashTaken, status:s.status, advanced:!!s.advanced,
+    shopName:s.shop?.name||'', shopPhone:s.shop?.phone||'', shopAddress:s.shop?.address||'', billTotal:s.bill?.total||0, billPaid:s.bill?.paid||0, billChange:s.bill?.change||0,
+    endCash:s.endCash??'', expectedCash:s.expectedCash??'', difference:s.difference??'', createdAt:s.createdAt||'', updatedAt:s.updatedAt||'' }));
+  const itemRows = []; sessions.forEach(s=>(s.items||[]).forEach(it=>itemRows.push({ sessionId:s.id, id:it.id||'', name:it.name, category:it.category||'', brand:it.brand||'', unit:it.unit||'', qty:it.qty||1, priceUnit:it.priceUnit||0, total:it.total||0, note:it.note||'', addToInventory:!!it.addToInventory })));
+  const journeyRows = []; sessions.forEach(s=>(s.journeys||[]).forEach(j=>journeyRows.push({ sessionId:s.id, id:j.id||'', type:j.type, cost:j.cost, from:j.from||'', to:j.to||'' })));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(catRows), 'Categories');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expRows), 'Expenses');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sesRows), 'Sessions');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(itemRows), 'SessionItems');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(journeyRows), 'SessionJourneys');
+  XLSX.writeFile(wb, `home-inventory-${todayStr()}.xlsx`);
+  toast('Excel exported');
+}
+
+/* Merge a batch of category-shaped rows against the in-memory + persisted category tree */
+async function mergeCategoryRows(rows){
+  let cats = await dbGetAll('categories');
+  let newC=0, updated=0, skipped=0;
+  for(const row of rows){
+    const nameEn = (row.nameEn||row.name||'').toString().trim();
+    const nameBn = (row.nameBn||'').toString().trim();
+    if(!nameEn && !nameBn){ skipped++; continue; }
+    const existingById = row.id ? cats.find(c=>c.id===row.id) : null;
+    const dup = findCategoryDuplicate(nameEn, nameBn, cats, existingById?.id||null);
+    if(dup){ skipped++; continue; } // already exists somewhere in the hierarchy — never duplicate
+    if(existingById){
+      const inTime = row.updatedAt||''; const exTime = existingById.updatedAt||'';
+      if(inTime > exTime){ existingById.nameEn=nameEn; existingById.nameBn=nameBn; existingById.parentId=row.parentId||null; existingById.active = row.active!==false && row.active!=='FALSE'; await dbPut('categories', existingById); updated++; }
+      else skipped++;
+    } else {
+      const rec = { id: row.id || uid(), nameEn, nameBn, parentId: row.parentId||null, active: row.active!==false && row.active!=='FALSE' };
+      await dbPut('categories', rec); cats.push(rec); newC++;
+    }
+  }
+  await loadCatCache();
+  return {newC, updated, skipped};
+}
+async function mergeExpenseRows(rows){
+  let newC=0, updated=0, skipped=0;
+  for(const row of rows){
+    if(!row.id || !row.name){ skipped++; continue; }
+    const existing = await dbGet('expenses', row.id);
+    const rec = { id:row.id, name:row.name, amount: parseInt(row.amount)||0, categoryId: row.categoryId||'', category: row.category||'Other',
+      date: row.date||todayStr(), time: row.time||'00:00', vendor: row.vendor||'', paymentMethod: row.paymentMethod||'Cash', note: row.note||'' };
+    if(!existing){ await dbPut('expenses', rec); await addTransaction('Expense', rec.amount, rec.category, rec.name); newC++; }
+    else{
+      const inTime = row.updatedAt||''; const exTime = existing.updatedAt||'';
+      if(inTime > exTime){ await dbPut('expenses', Object.assign(existing, rec)); updated++; } else skipped++;
+    }
+  }
+  return {newC, updated, skipped};
+}
+async function mergeSessionRows(sesRows, itemRows=[], journeyRows=[]){
+  let newC=0, updated=0, skipped=0;
+  const itemsBySession = {}, journeysBySession = {};
+  itemRows.forEach(r=>{ (itemsBySession[r.sessionId] = itemsBySession[r.sessionId]||[]).push({ id:r.id||uid(), name:r.name, category:r.category||'', brand:r.brand||'', unit:r.unit||'', qty:parseFloat(r.qty)||1, priceUnit:parseFloat(r.priceUnit)||0, total:parseFloat(r.total)||0, note:r.note||'', addToInventory: r.addToInventory===true||r.addToInventory==='TRUE' }); });
+  journeyRows.forEach(r=>{ (journeysBySession[r.sessionId] = journeysBySession[r.sessionId]||[]).push({ id:r.id||uid(), type:r.type, cost:parseFloat(r.cost)||0, from:r.from||'', to:r.to||'' }); });
+  for(const row of sesRows){
+    if(!row.id || !row.name){ skipped++; continue; }
+    const existing = await dbGet('sessions', row.id);
+    const rec = { id:row.id, name:row.name, date:row.date||todayStr(), startTime:row.startTime||'00:00', cashTaken: parseInt(row.cashTaken)||0,
+      status: row.status||'closed', advanced: row.advanced===true||row.advanced==='TRUE',
+      items: itemsBySession[row.id] || (existing?existing.items:[]) || [],
+      journeys: journeysBySession[row.id] || (existing?existing.journeys:[]) || [],
+      shop: { name:row.shopName||'', phone:row.shopPhone||'', address:row.shopAddress||'' },
+      bill: { total: parseInt(row.billTotal)||0, paid: parseInt(row.billPaid)||0, change: parseInt(row.billChange)||0 },
+      endCash: row.endCash===''?null:parseInt(row.endCash), expectedCash: row.expectedCash===''?null:parseInt(row.expectedCash), difference: row.difference===''?null:parseInt(row.difference) };
+    if(!existing){
+      await dbPut('sessions', rec);
+      const it = (rec.items||[]).reduce((a,i)=>a+i.total,0), jr = (rec.journeys||[]).reduce((a,j)=>a+j.cost,0);
+      if(it>0) await addTransaction('Shopping', it, 'Shopping', rec.name, rec.id);
+      if(jr>0) await addTransaction('Transport', jr, 'Transport', rec.name+' (transport)', rec.id);
+      newC++;
+    } else {
+      const inTime = row.updatedAt||''; const exTime = existing.updatedAt||'';
+      if(inTime > exTime){ await dbPut('sessions', Object.assign(existing, rec)); updated++; } else skipped++;
+    }
+  }
+  return {newC, updated, skipped};
+}
+function sumSummaries(list){ return list.reduce((a,b)=>({newC:a.newC+b.newC, updated:a.updated+b.updated, skipped:a.skipped+b.skipped}), {newC:0,updated:0,skipped:0}); }
+function showMergeSummary(title, s){
+  closeModal();
+  openModal(`<h3>${title}</h3><div class="card">
+    <div>New: ${s.newC}</div><div>Updated: ${s.updated}</div><div>Skipped (duplicate or older): ${s.skipped}</div>
+    <button class="btn" style="margin-top:12px" onclick="closeModal();render()">Done</button></div>`);
+}
+async function importExcelFile(file){
+  if(!xlsxReady()){ toast('Excel needs internet the first time to load the library'); return; }
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array'});
+  const sheet = (name)=> wb.Sheets[name] ? XLSX.utils.sheet_to_json(wb.Sheets[name], {defval:''}) : [];
+  const catSummary = await mergeCategoryRows(sheet('Categories'));
+  const expSummary = await mergeExpenseRows(sheet('Expenses'));
+  const sesSummary = await mergeSessionRows(sheet('Sessions'), sheet('SessionItems'), sheet('SessionJourneys'));
+  showMergeSummary('Excel Import — Merge Summary', sumSummaries([catSummary, expSummary, sesSummary]));
+}
+
+/* ---- Multi-file CSV export/import (Categories, Expenses, Sessions) ---- */
+async function exportCSVAll(){
+  const categories = await dbGetAll('categories'); await loadCatCache();
+  const expenses = await dbGetAll('expenses');
+  const sessions = await dbGetAll('sessions');
+  const catCsv = toCSV(categories.map(c=>({id:c.id,nameEn:c.nameEn||'',nameBn:c.nameBn||'',parentId:c.parentId||'',breadcrumb:catBreadcrumb(c.id,categories),active:c.active,updatedAt:c.updatedAt||''})));
+  const expCsv = toCSV(expenses.map(e=>({id:e.id,name:e.name,amount:e.amount,categoryId:e.categoryId||'',category:e.category||'',date:e.date,time:e.time,vendor:e.vendor||'',paymentMethod:e.paymentMethod||'',note:e.note||'',updatedAt:e.updatedAt||''})));
+  const sesCsv = toCSV(sessions.map(s=>({id:s.id,name:s.name,date:s.date,startTime:s.startTime,cashTaken:s.cashTaken,status:s.status,advanced:!!s.advanced,shopName:s.shop?.name||'',shopPhone:s.shop?.phone||'',shopAddress:s.shop?.address||'',billTotal:s.bill?.total||0,billPaid:s.bill?.paid||0,billChange:s.bill?.change||0,endCash:s.endCash??'',expectedCash:s.expectedCash??'',difference:s.difference??'',updatedAt:s.updatedAt||''})));
+  downloadFile(`home-inventory-categories-${todayStr()}.csv`, catCsv, 'text/csv');
+  setTimeout(()=>downloadFile(`home-inventory-expenses-${todayStr()}.csv`, expCsv, 'text/csv'), 300);
+  setTimeout(()=>downloadFile(`home-inventory-sessions-${todayStr()}.csv`, sesCsv, 'text/csv'), 600);
+  toast('CSV files exported (Categories, Expenses, Sessions)');
+}
+function toCSV(rows){
+  if(!rows.length) return '';
+  const header = Object.keys(rows[0]);
+  return [header.join(',')].concat(rows.map(r=>header.map(h=>csvEscape(r[h])).join(','))).join('\n');
+}
+function parseCSVText(text){
+  const lines = text.replace(/\r\n/g,'\n').split('\n').filter(l=>l.length);
+  if(!lines.length) return [];
+  const parseLine = (line)=>{
+    const out=[]; let cur=''; let inQ=false;
+    for(let i=0;i<line.length;i++){ const ch=line[i];
+      if(inQ){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else inQ=false; } else cur+=ch; }
+      else { if(ch==='"') inQ=true; else if(ch===','){ out.push(cur); cur=''; } else cur+=ch; }
+    }
+    out.push(cur); return out;
+  };
+  const header = parseLine(lines[0]);
+  return lines.slice(1).map(l=>{ const vals=parseLine(l); const o={}; header.forEach((h,i)=>o[h]=vals[i]!==undefined?vals[i]:''); return o; });
+}
+async function importCSVFile(file){
+  const text = await file.text();
+  const rows = parseCSVText(text);
+  if(!rows.length){ toast('CSV file has no data rows'); return; }
+  const headers = Object.keys(rows[0]);
+  if(headers.includes('nameEn') || headers.includes('breadcrumb')){
+    const s = await mergeCategoryRows(rows); showMergeSummary('CSV Import — Categories', s);
+  } else if(headers.includes('vendor') || headers.includes('paymentMethod') || (headers.includes('amount') && headers.includes('name'))){
+    const s = await mergeExpenseRows(rows); showMergeSummary('CSV Import — Expenses', s);
+  } else if(headers.includes('cashTaken')){
+    const s = await mergeSessionRows(rows, [], []); showMergeSummary('CSV Import — Sessions (note: item/journey detail is not carried in CSV — use Excel or JSON for full session detail)', s);
+  } else {
+    toast('Could not detect CSV type — expected a Categories, Expenses or Sessions export');
+  }
+}
+
 async function backupNow(){
   await exportJSON();
   const s = await dbGet('settings','app'); s.lastBackup = now(); await dbPut('settings',s); render();
@@ -912,7 +1073,13 @@ function validateImportShape(data){
 }
 async function doImport(){
   const file = document.getElementById('importFile').files[0];
-  if(!file){ toast('Choose a JSON file first'); return; }
+  if(!file){ toast('Choose a file first (.json, .xlsx or .csv)'); return; }
+  const ext = file.name.split('.').pop().toLowerCase();
+  if(ext==='xlsx' || ext==='xls'){ await importExcelFile(file); return; }
+  if(ext==='csv'){ await importCSVFile(file); return; }
+  await importJSONFile(file);
+}
+async function importJSONFile(file){
   const replace = document.getElementById('importReplace').checked;
   const text = await file.text();
   let data;
