@@ -748,7 +748,10 @@ async function renderTransactions(root){
   ${txns.length? txns.map(t=>{
     const isIncome = t.type==='Income';
     return `<div class="list-item"><div><div>${t.description||t.type}</div><div class="meta">${t.type} · ${t.category} · ${t.date} ${t.time}</div></div>
-    <div style="text-align:right"><div class="amt ${isIncome?'income':'expense'}">${isIncome?'+':(t.type==='Cash Snapshot'?'':'-')}${fmt(t.amount)}</div><span onclick="deleteTxn('${t.id}')" style="cursor:pointer;color:var(--danger);font-size:12px">delete</span></div></div>`;
+    <div style="text-align:right"><div class="amt ${isIncome?'income':'expense'}">${isIncome?'+':(t.type==='Cash Snapshot'?'':'-')}${fmt(t.amount)}</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:2px">
+    <span onclick="editTxn('${t.id}')" style="cursor:pointer;color:var(--accent2);font-size:12px">edit</span>
+    <span onclick="deleteTxn('${t.id}')" style="cursor:pointer;color:var(--danger);font-size:12px">delete</span></div></div></div>`;
   }).join('') : '<div class="empty">No matching transactions.</div>'}
   `;
   document.getElementById('txnSearch').oninput = (e)=>{ TXN_SEARCH=e.target.value; renderTransactions(document.getElementById('viewRoot')); };
@@ -756,6 +759,31 @@ async function renderTransactions(root){
 }
 function setTxnFilter(t){ TXN_FILTER=t; render(); }
 async function deleteTxn(id){ if(!confirm('Delete this transaction record? This does not undo linked session/expense records.')) return; await dbDelete('transactions',id); render(); }
+async function editTxn(id){
+  const t = await dbGet('transactions', id);
+  if(!t) return;
+  const types = ['Income','Expense','Shopping','Transport','Cash Snapshot','Cash Adjustment'];
+  openModal(`<h3>Edit Transaction</h3>
+  <label>Type</label><select id="etType">${types.map(x=>`<option ${t.type===x?'selected':''}>${x}</option>`).join('')}</select>
+  <label>Description</label><input id="etDesc" value="${(t.description||'').replace(/"/g,'&quot;')}">
+  <label>Amount (${CURRENCY_SYMBOL})</label><input type="number" min="0" id="etAmt" value="${t.amount}">
+  <label>Category</label><input id="etCat" value="${(t.category||'').replace(/"/g,'&quot;')}">
+  <div class="row"><div><label>Date</label><input type="date" id="etDate" value="${t.date}"></div><div><label>Time</label><input type="time" id="etTime" value="${t.time}"></div></div>
+  <button class="btn" style="margin-top:12px" onclick="saveEditTxn('${id}')">Save Changes</button>`);
+}
+async function saveEditTxn(id){
+  const t = await dbGet('transactions', id);
+  const amount = parseInt(document.getElementById('etAmt').value);
+  if(isNaN(amount) || amount<0){ toast('Enter a valid amount'); return; }
+  t.type = document.getElementById('etType').value;
+  t.description = document.getElementById('etDesc').value;
+  t.amount = amount;
+  t.category = document.getElementById('etCat').value || 'Other';
+  t.date = document.getElementById('etDate').value || t.date;
+  t.time = document.getElementById('etTime').value || t.time;
+  await dbPut('transactions', t);
+  closeModal(); toast('Transaction updated'); render();
+}
 
 /* ================= SETTINGS ================= */
 async function renderSettings(root){
