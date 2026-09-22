@@ -117,6 +117,13 @@ nav.bottomnav .ic{font-size:18px;}
 .toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--card2);border:1px solid var(--border);color:var(--text);padding:10px 18px;border-radius:20px;font-size:13px;z-index:60;opacity:0;transition:opacity .25s;pointer-events:none;}
 .toast.show{opacity:1;}
 .divider{border:none;border-top:1px solid var(--border);margin:14px 0;}
+.brand-card{background:linear-gradient(160deg,var(--card),#152a4a);}
+.brand-card-top{display:flex;align-items:center;gap:14px;margin-bottom:14px;}
+.brand-photo{width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--accent);flex-shrink:0;}
+.brand-name{font-weight:800;font-size:14px;letter-spacing:-.01em;}
+.brand-links{display:flex;flex-wrap:wrap;gap:8px;}
+.brand-link{background:var(--card2);border:1px solid var(--border);color:var(--text);text-decoration:none;border-radius:20px;padding:7px 13px;font-size:12px;transition:.15s;}
+.brand-link:hover{border-color:var(--accent);color:var(--accent2);}
 .discrepancy{font-size:18px;font-weight:800;text-align:center;padding:10px;border-radius:10px;margin:10px 0;}
 .discrepancy.ok{background:#1a3a2f;color:var(--good);}
 .discrepancy.bad{background:#3a1a1a;color:var(--danger);}
@@ -869,7 +876,22 @@ async function renderSettings(root){
   </div>
 
   <h2 class="section-title">About</h2>
-  <div class="card meta">Home Inventory — offline-first household cash, shopping & inventory tracker prototype. Schema v1. Device ID: ${DEVICE_ID}</div>
+  <div class="card meta">Home Inventory — offline-first household cash, shopping & inventory tracker. Schema v1. Device ID: ${DEVICE_ID}</div>
+
+  <h2 class="section-title">Developer</h2>
+  <div class="card brand-card">
+    <div class="brand-card-top">
+      <img class="brand-photo" src="./assets/porosh.jpg" alt="MD Ikramul Islam Siddique Porosh" onerror="this.style.display='none'">
+      <div><div class="brand-name">MD IKRAMUL ISLAM SIDDIQUE POROSH</div><div class="meta">Porosh · Senior Software Professional</div></div>
+    </div>
+    <div class="brand-links">
+      <a class="brand-link" href="tel:+8801672896992">📞 +8801672896992</a>
+      <a class="brand-link" href="https://www.youtube.com/@mdikramulsilamsiddiqueporosh" target="_blank" rel="noopener">▶️ YouTube</a>
+      <a class="brand-link" href="https://facebook.com/iamrjporosh" target="_blank" rel="noopener">📘 Facebook</a>
+      <a class="brand-link" href="https://twitter.com/rjporosh" target="_blank" rel="noopener">🐦 Twitter</a>
+      <a class="brand-link" href="https://rjporosh.github.io" target="_blank" rel="noopener">🌐 Portfolio</a>
+    </div>
+  </div>
   `;
 }
 async function openSubcategoryForm(parentId){

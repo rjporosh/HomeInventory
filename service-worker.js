@@ -1,5 +1,5 @@
-const CACHE_NAME = 'home-inventory-v1';
-const ASSETS = ['./', './index.html', './manifest.json'];
+const CACHE_NAME = 'home-inventory-v2';
+const ASSETS = ['./', './index.html', './manifest.json', './assets/porosh.jpg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
