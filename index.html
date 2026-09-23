@@ -400,9 +400,9 @@ async function renderCash(root){
   const snapshots = (await dbGetAll('cashSnapshots')).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   root.innerHTML = `
   <div class="grid3">
-    <div class="stat-card"><div class="label">Notes</div><div class="value">${fmt(notesTotal)}</div></div>
-    <div class="stat-card"><div class="label">Coins</div><div class="value">${fmt(coinsTotal)}</div></div>
-    <div class="stat-card"><div class="label">Grand Total</div><div class="value good">${fmt(grand)}</div></div>
+    <div class="stat-card"><div class="label">Notes</div><div class="value" id="sumNotes">${fmt(notesTotal)}</div></div>
+    <div class="stat-card"><div class="label">Coins</div><div class="value" id="sumCoins">${fmt(coinsTotal)}</div></div>
+    <div class="stat-card"><div class="label">Grand Total</div><div class="value good" id="sumGrand">${fmt(grand)}</div></div>
   </div>
   <div class="card">
     <div class="toggle-row"><b>Notes</b><label class="switch"><input type="checkbox" id="advCashToggle" ${cc.advanced?'checked':''}><span class="slider"></span></label></div>
@@ -429,7 +429,10 @@ function renderDenomRows(cc){
       await dbPut('currentCash',cc2);
       document.getElementById('tot_'+d).textContent = fmt(d*cc2.denoms[d]);
       const t = cashTotals(cc2);
-      // silently refresh header stat cards if present
+      const sn=document.getElementById('sumNotes'), sc=document.getElementById('sumCoins'), sg=document.getElementById('sumGrand');
+      if(sn) sn.textContent = fmt(t.notesTotal);
+      if(sc) sc.textContent = fmt(t.coinsTotal);
+      if(sg) sg.textContent = fmt(t.grand);
     };
   });
 }
@@ -978,6 +981,7 @@ async function exportJSON(){
   downloadFile(`home-inventory-export-${todayStr()}.json`, JSON.stringify(data,null,2), 'application/json');
   toast('Exported JSON');
 }
+function toBool(v){ if(typeof v==='boolean') return v; if(v==null) return false; const s=String(v).trim().toLowerCase(); return s==='true'||s==='1'||s==='yes'; }
 function csvEscape(v){ if(v==null) return ''; const s=String(v).replace(/"/g,'""'); return /[",\n]/.test(s)?`"${s}"`:s; }
 async function exportCSV(){
   const txns = await dbGetAll('transactions');
@@ -1024,10 +1028,10 @@ async function mergeCategoryRows(rows){
     if(dup){ skipped++; continue; } // already exists somewhere in the hierarchy — never duplicate
     if(existingById){
       const inTime = row.updatedAt||''; const exTime = existingById.updatedAt||'';
-      if(inTime > exTime){ existingById.nameEn=nameEn; existingById.nameBn=nameBn; existingById.parentId=row.parentId||null; existingById.active = row.active!==false && row.active!=='FALSE'; await dbPut('categories', existingById); updated++; }
+      if(inTime > exTime){ existingById.nameEn=nameEn; existingById.nameBn=nameBn; existingById.parentId=row.parentId||null; existingById.active = row.active==='' ? true : toBool(row.active); await dbPut('categories', existingById); updated++; }
       else skipped++;
     } else {
-      const rec = { id: row.id || uid(), nameEn, nameBn, parentId: row.parentId||null, active: row.active!==false && row.active!=='FALSE' };
+      const rec = { id: row.id || uid(), nameEn, nameBn, parentId: row.parentId||null, active: row.active==='' ? true : toBool(row.active) };
       await dbPut('categories', rec); cats.push(rec); newC++;
     }
   }
@@ -1052,13 +1056,13 @@ async function mergeExpenseRows(rows){
 async function mergeSessionRows(sesRows, itemRows=[], journeyRows=[]){
   let newC=0, updated=0, skipped=0;
   const itemsBySession = {}, journeysBySession = {};
-  itemRows.forEach(r=>{ (itemsBySession[r.sessionId] = itemsBySession[r.sessionId]||[]).push({ id:r.id||uid(), name:r.name, category:r.category||'', brand:r.brand||'', unit:r.unit||'', qty:parseFloat(r.qty)||1, priceUnit:parseFloat(r.priceUnit)||0, total:parseFloat(r.total)||0, note:r.note||'', addToInventory: r.addToInventory===true||r.addToInventory==='TRUE' }); });
+  itemRows.forEach(r=>{ (itemsBySession[r.sessionId] = itemsBySession[r.sessionId]||[]).push({ id:r.id||uid(), name:r.name, category:r.category||'', brand:r.brand||'', unit:r.unit||'', qty:parseFloat(r.qty)||1, priceUnit:parseFloat(r.priceUnit)||0, total:parseFloat(r.total)||0, note:r.note||'', addToInventory: toBool(r.addToInventory) }); });
   journeyRows.forEach(r=>{ (journeysBySession[r.sessionId] = journeysBySession[r.sessionId]||[]).push({ id:r.id||uid(), type:r.type, cost:parseFloat(r.cost)||0, from:r.from||'', to:r.to||'' }); });
   for(const row of sesRows){
     if(!row.id || !row.name){ skipped++; continue; }
     const existing = await dbGet('sessions', row.id);
     const rec = { id:row.id, name:row.name, date:row.date||todayStr(), startTime:row.startTime||'00:00', cashTaken: parseInt(row.cashTaken)||0,
-      status: row.status||'closed', advanced: row.advanced===true||row.advanced==='TRUE',
+      status: row.status||'closed', advanced: toBool(row.advanced),
       items: itemsBySession[row.id] || (existing?existing.items:[]) || [],
       journeys: journeysBySession[row.id] || (existing?existing.journeys:[]) || [],
       shop: { name:row.shopName||'', phone:row.shopPhone||'', address:row.shopAddress||'' },
