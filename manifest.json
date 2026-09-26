@@ -1,0 +1,24 @@
+{
+  "name": "Home Inventory",
+  "short_name": "HomeInv",
+  "description": "Household cash, shopping, inventory and daily expense tracker",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='36' fill='%230ea5a4'/%3E%3Ctext x='96' y='128' font-size='108' text-anchor='middle' fill='white' font-family='sans-serif'%3E%E0%A7%B3%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230ea5a4'/%3E%3Ctext x='256' y='340' font-size='288' text-anchor='middle' fill='white' font-family='sans-serif'%3E%E0%A7%B3%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
