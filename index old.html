@@ -94,13 +94,6 @@ nav.bottomnav .ic{font-size:18px;}
 .discrepancy{font-size:18px;font-weight:800;text-align:center;padding:10px;border-radius:10px;margin:10px 0;}
 .discrepancy.ok{background:#1a3a2f;color:var(--good);}
 .discrepancy.bad{background:#3a1a1a;color:var(--danger);}
-.item-actions{display:flex;gap:5px;align-items:center;flex-wrap:wrap;justify-content:flex-end;}
-.item-actions button{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:8px;padding:5px 8px;font-size:11px;}
-.item-actions .delete{color:var(--danger);}
-.chip{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid var(--border);border-radius:16px;background:var(--card2);font-size:11px;margin:2px;}
-.readonly-field{opacity:.75;}
-.export-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-@media(max-width:420px){.export-grid{grid-template-columns:1fr;}}
 ::-webkit-scrollbar{width:0;height:0;}
 @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#0f172a;--text:#e8edf7;}}
 </style>
@@ -400,8 +393,7 @@ async function renderShopping(root){
     const total = sessionTotal(s);
     return `<div class="list-item" onclick="openSessionDetail('${s.id}')" style="cursor:pointer">
       <div><div>${s.name} <span class="badge ${s.status==='open'?'open':''}">${s.status}</span></div>
-      <div class="meta">${s.date} · cash taken ${fmt(s.cashTaken)} · ${(s.items||[]).length} items</div>
-      ${s.status==='closed'?`<div class="meta">Actual return: <b style="color:var(--good)">${fmt(s.endCash||0)}</b></div>`:''}</div>
+      <div class="meta">${s.date} · cash taken ${fmt(s.cashTaken)} · ${(s.items||[]).length} items</div></div>
       <div class="amt expense">${fmt(total)}</div></div>`;
   }).join('') : '<div class="empty">No shopping sessions yet.</div>'}`;
 }
@@ -427,80 +419,114 @@ async function createSession(){
 }
 
 async function openSessionDetail(id){
-  const s = await dbGet('sessions', id); if(!s) return;
-  s.items=s.items||[]; s.journeys=s.journeys||[]; s.shop=s.shop||{name:'',phone:'',address:''}; s.bill=s.bill||{total:0,paid:0,change:0};
-  const itemsTotal=sessionItemsTotal(s), journeysTotal=sessionJourneysTotal(s), total=itemsTotal+journeysTotal, journeyTypes=await getJourneyTypes();
-  openModal(`<h3>${escapeHtml(s.name)} <span class="badge ${s.status==='open'?'open':''}">${s.status}</span></h3>
+  const s = await dbGet('sessions', id);
+  if(!s){ return; }
+  const itemsTotal = sessionItemsTotal(s), journeysTotal = sessionJourneysTotal(s), total = itemsTotal+journeysTotal;
+  openModal(`<h3>${s.name} <span class="badge ${s.status==='open'?'open':''}">${s.status}</span></h3>
   <div class="meta">${s.date} ${s.startTime} · Cash taken: ${fmt(s.cashTaken)}</div>
-  <div class="toggle-row"><b>Session Advanced</b><label class="switch"><input type="checkbox" id="advSesToggle" ${s.advanced?'checked':''}><span class="slider"></span></label></div>
+  <div class="toggle-row"><b>Advanced</b><label class="switch"><input type="checkbox" id="advSesToggle" ${s.advanced?'checked':''}><span class="slider"></span></label></div>
   <div id="advShopBlock"></div>
-  <label>Quick add items — one per line. Supported: <b>Item, Price</b> or <b>Item, Price, Unit, Unit Price, Quantity, Pieces, Notes</b>. Voice-style: <b>Rice 10 taka</b>.</label>
-  <textarea id="quickItems" placeholder="Rice, 1090\nPotato, 600, kg, 60, 10, 1, local\nRice 10 taka"></textarea>
-  <div class="row" style="margin-top:8px"><button class="btn secondary" onclick="quickAddItems('${s.id}')">+ Add Items</button><button class="btn secondary" style="flex:0 0 58px" onclick="startVoiceItem('${s.id}')" title="Voice add">🎙️</button></div>
-  <h4 style="margin-bottom:6px">Items (${s.items.length}) — ${fmt(itemsTotal)}</h4>
-  ${s.items.map((it,idx)=>`<div class="list-item"><div style="min-width:0"><div>${escapeHtml(it.name)}${itemQtyLabel(it)}</div><div class="meta">${escapeHtml(it.category||'')}${it.subcategory?(' · '+escapeHtml(it.subcategory)):''}${it.unit?(' · '+escapeHtml(it.unit)):''}${it.pieces!=null&&it.pieces!==''?(' · pieces '+it.pieces):''}${it.note?(' · '+escapeHtml(it.note)):''}</div></div><div style="text-align:right"><div class="amt expense">${fmt(it.total)}</div><div class="item-actions"><button type="button" onclick="editSessionItem('${s.id}',${idx});event.stopPropagation()">Edit</button><button type="button" class="delete" onclick="removeSessionItem('${s.id}',${idx});event.stopPropagation()">Delete</button></div></div></div>`).join('')||'<div class="empty">No items yet.</div>'}
+  <label>Quick add items — one per line ("Item, Price" or "Item - ৳Price")</label>
+  <textarea id="quickItems" placeholder="Rice, 1090\nPotato, 600\nRickshaw, 40"></textarea>
+  <button class="btn secondary" style="margin-top:8px" onclick="quickAddItems('${s.id}')">+ Add Items</button>
+  <h4 style="margin-bottom:6px">Items (${(s.items||[]).length}) — ${fmt(itemsTotal)}</h4>
+  ${(s.items||[]).map((it,idx)=>`<div class="list-item"><div><div>${it.name}${it.qty>1?(' × '+it.qty):''}</div><div class="meta">${it.category||''} ${it.unit?('· '+it.unit):''}</div></div><div class="amt expense">${fmt(it.total)} <span onclick="removeSessionItem('${s.id}',${idx})" style="cursor:pointer;color:var(--danger)">✕</span></div></div>`).join('') || '<div class="empty">No items yet.</div>'}
   <h4 style="margin:14px 0 6px">Journeys — ${fmt(journeysTotal)}</h4>
-  ${s.journeys.map((j,idx)=>`<div class="list-item"><div style="min-width:0"><div>${escapeHtml(j.type)}</div><div class="meta">${escapeHtml(j.from||'')}${j.to?(' → '+escapeHtml(j.to)):''}${j.advanced?(' · '+(j.startedAt||'')+' → '+(j.endedAt||'')):''}</div></div><div style="text-align:right"><div class="amt expense">${fmt(j.cost)}</div><div class="item-actions"><button type="button" onclick="editJourney('${s.id}',${idx});event.stopPropagation()">Edit</button><button type="button" class="delete" onclick="removeSessionJourney('${s.id}',${idx});event.stopPropagation()">Delete</button></div></div></div>`).join('')||'<div class="empty">No journeys yet.</div>'}
-  <div class="row" style="margin-top:8px"><select id="journeyType">${journeyTypes.map(t=>`<option>${escapeHtml(t)}</option>`).join('')}</select><input type="number" min="0" id="journeyCost" placeholder="Cost"></div>
-  <div class="toggle-row"><b>Advanced journey details</b><label class="switch"><input type="checkbox" id="journeyAdvancedToggle"><span class="slider"></span></label></div><div id="journeyAdvBlock"></div>
-  <button type="button" class="btn secondary" style="margin-top:8px" onclick="addJourney('${s.id}');event.stopPropagation()">+ Add Journey</button>
-  <button class="btn secondary" style="margin-top:8px" onclick="addJourneyTypeFromSession('${s.id}')">+ Add Vehicle / Journey Type</button>
-  <div class="divider"></div><div><b>Session Total: ${fmt(total)}</b></div>
-  ${s.status==='open'?`<button class="btn" style="margin-top:10px" onclick="openEndSession('${s.id}')">✅ End Session / Reconcile</button>`:`<div class="discrepancy ${Math.abs(s.difference||0)<=0?'ok':'bad'}">Reconciled — Difference: ${fmt(s.difference||0)} · Actual return: ${fmt(s.endCash||0)}</div>`}
-  <button class="btn danger" style="margin-top:10px" onclick="deleteSession('${s.id}')">Delete Session</button>`);
-  document.getElementById('advSesToggle').onchange=async e=>{const x=await dbGet('sessions',id);x.advanced=e.target.checked;await dbPut('sessions',x);openSessionDetail(id)};
+  ${(s.journeys||[]).map((j,idx)=>`<div class="list-item"><div><div>${j.type}</div><div class="meta">${j.from||''}${j.to?(' → '+j.to):''}</div></div><div class="amt expense">${fmt(j.cost)} <span onclick="removeSessionJourney('${s.id}',${idx})" style="cursor:pointer;color:var(--danger)">✕</span></div></div>`).join('') || '<div class="empty">No journeys yet.</div>'}
+  <div class="row" style="margin-top:8px">
+    <select id="journeyType"><option>Rickshaw</option><option>CNG</option><option>Bus</option><option>Walking</option><option>Other</option></select>
+    <input type="number" min="0" id="journeyCost" placeholder="Cost">
+  </div>
+  <button class="btn secondary" style="margin-top:8px" onclick="addJourney('${s.id}')">+ Add Journey</button>
+  <div class="divider"></div>
+  <div><b>Session Total: ${fmt(total)}</b></div>
+  ${s.status==='open' ? `<button class="btn" style="margin-top:10px" onclick="openEndSession('${s.id}')">✅ End Session / Reconcile</button>`
+   : `<div class="discrepancy ${Math.abs(s.difference||0)<=0? 'ok':'bad'}">Reconciled — Difference: ${fmt(s.difference||0)}</div>`}
+  <button class="btn danger" style="margin-top:10px" onclick="deleteSession('${s.id}')">Delete Session</button>
+  `);
+  document.getElementById('advSesToggle').onchange = async (e)=>{ const s2=await dbGet('sessions',id); s2.advanced=e.target.checked; await dbPut('sessions',s2); openSessionDetail(id); };
   renderAdvShopBlock(s);
-  const jt=document.getElementById('journeyAdvancedToggle');
-  if(jt) jt.onchange=()=>renderNewJourneyAdvanced(jt.checked);
 }
-function renderNewJourneyAdvanced(on){
-  const el=document.getElementById('journeyAdvBlock'); if(!el)return;
-  el.innerHTML=on?`<div class="row"><div><label>Journey Started Time</label><input type="datetime-local" id="journeyStartedAt"></div><div><label>Journey Ended Time</label><input type="datetime-local" id="journeyEndedAt"></div></div><div class="row"><div><label>Journey Started From</label><input id="journeyFrom" placeholder="Home"></div><div><label>Journey Ended At</label><input id="journeyTo" placeholder="Bazar"></div></div>`:'';
+function renderAdvShopBlock(s){
+  const el = document.getElementById('advShopBlock');
+  if(!s.advanced){ el.innerHTML=''; return; }
+  el.innerHTML = `<label>Shop Name</label><input id="shopName" value="${s.shop.name||''}">
+  <label>Shop Phone</label><input id="shopPhone" value="${s.shop.phone||''}">
+  <label>Shop Address</label><input id="shopAddr" value="${s.shop.address||''}">
+  <div class="row"><div><label>Bill Total</label><input type="number" id="billTotal" value="${s.bill.total||0}"></div>
+  <div><label>Paid</label><input type="number" id="billPaid" value="${s.bill.paid||0}"></div></div>
+  <button class="btn secondary" style="margin-top:8px" onclick="saveShopBill('${s.id}')">Save Shop / Bill Info</button>`;
 }
-function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));}
-function itemQtyLabel(it){const q=it.quantity!=null&&it.quantity!==''?it.quantity:(it.qty!=null&&it.qty!==''?it.qty:'');return q!==''?` × ${q}`:'';}
-async function getJourneyTypes(){const st=await dbGet('settings','app');return Array.isArray(st?.journeyTypes)&&st.journeyTypes.length?st.journeyTypes:['Rickshaw','CNG','Bus','Walking','Other'];}
-async function addJourneyTypeFromSession(id){const name=prompt('Add vehicle / journey type (e.g. Van, Auto)');if(!name||!name.trim())return;const st=await dbGet('settings','app')||{id:'app'};st.journeyTypes=Array.isArray(st.journeyTypes)?st.journeyTypes:await getJourneyTypes();const clean=name.trim();if(!st.journeyTypes.some(x=>x.toLowerCase()===clean.toLowerCase()))st.journeyTypes.push(clean);await dbPut('settings',st);await openSessionDetail(id);const sel=document.getElementById('journeyType');if(sel)sel.value=clean;}
-function renderAdvShopBlock(s){const el=document.getElementById('advShopBlock');if(!s.advanced){el.innerHTML='';return;}el.innerHTML=`<label>Shop Name</label><input id="shopName" value="${escapeHtml(s.shop.name||'')}"><label>Shop Phone</label><input id="shopPhone" value="${escapeHtml(s.shop.phone||'')}"><label>Shop Address</label><input id="shopAddr" value="${escapeHtml(s.shop.address||'')}"><div class="row"><div><label>Bill Total</label><input type="number" id="billTotal" value="${s.bill.total||0}"></div><div><label>Paid</label><input type="number" id="billPaid" value="${s.bill.paid||0}"></div></div><button class="btn secondary" style="margin-top:8px" onclick="saveShopBill('${s.id}')">Save Shop / Bill Info</button>`;}
-async function saveShopBill(id){const s=await dbGet('sessions',id);s.shop={name:document.getElementById('shopName').value,phone:document.getElementById('shopPhone').value,address:document.getElementById('shopAddr').value};const total=parseInt(document.getElementById('billTotal').value)||0,paid=parseInt(document.getElementById('billPaid').value)||0;s.bill={total,paid,change:Math.max(0,paid-total)};await dbPut('sessions',s);toast('Saved');openSessionDetail(id);}
-function parseMaybeNumber(v){if(v==null||v==='')return '';const n=parseFloat(v);return Number.isNaN(n)?'':n;}
-function parseQuickItems(text){return text.split(/\n|;/).map(l=>l.trim()).filter(Boolean).map(line=>{const f=line.split(',').map(x=>x.trim());if(f.length>=2){const price=parseFloat((f[1]||'').replace(/[^0-9.\-]/g,''));if(!Number.isNaN(price))return{name:f[0],price,total:price,unit:f[2]||'',unitPrice:parseMaybeNumber(f[3]),quantity:parseMaybeNumber(f[4]),pieces:parseMaybeNumber(f[5]),note:f.slice(6).join(', ').trim(),subcategory:''};}let m=line.match(/^(.+?)\s+(?:৳|tk|taka)?\s*([\d.]+)\s*(?:tk|taka|৳)?$/i);if(!m)m=line.match(/^(.+?)[,\-–]\s*(?:৳|tk|taka)?\s*([\d.]+)\s*(?:tk|taka|৳)?$/i);if(!m)return null;const price=parseFloat(m[2]);return{name:m[1].trim(),price,total:price,unit:'',unitPrice:price,quantity:'',pieces:'',note:''};}).filter(Boolean);}
-async function quickAddItems(id){const parsed=parseQuickItems(document.getElementById('quickItems').value);if(!parsed.length){toast('No valid items found — use "Item, Price" or "Rice 10 taka"');return;}const s=await dbGet('sessions',id);s.items=s.items||[];parsed.forEach(p=>{const qty=p.quantity!==''&&p.quantity!=null?p.quantity:1;const total=(p.unitPrice!==''&&p.unitPrice!=null&&p.quantity!==''&&p.quantity!=null)?Math.round(p.unitPrice*p.quantity):Math.round(p.total);s.items.push({id:uid(),name:p.name,category:'',brand:'',unit:p.unit||'',qty,quantity:p.quantity,pieces:p.pieces,priceUnit:p.unitPrice!==''&&p.unitPrice!=null?p.unitPrice:p.price,unitPrice:p.unitPrice,total,note:p.note||'',advanced:Boolean(p.unit||p.unitPrice!==''||p.quantity!==''||p.pieces!==''||p.note),addToInventory:false});});await dbPut('sessions',s);toast(parsed.length+' item(s) added');openSessionDetail(id);}
-function startVoiceItem(id){
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){toast('Voice input is not supported in this browser');return;}
-  const r=new SR();r.lang=LANG==='bn'?'bn-BD':'en-US';r.interimResults=false;r.maxAlternatives=1;
-  toast('Listening… say e.g. Rice 10 taka');
-  r.onresult=e=>{const text=e.results[0][0].transcript;const box=document.getElementById('quickItems');box.value=(box.value?box.value+'\n':'')+text;quickAddItems(id);};
-  r.onerror=()=>toast('Voice input could not be captured');r.start();
+async function saveShopBill(id){
+  const s = await dbGet('sessions',id);
+  s.shop = { name:document.getElementById('shopName').value, phone:document.getElementById('shopPhone').value, address:document.getElementById('shopAddr').value };
+  const total = parseInt(document.getElementById('billTotal').value)||0;
+  const paid = parseInt(document.getElementById('billPaid').value)||0;
+  s.bill = { total, paid, change: Math.max(0,paid-total) };
+  await dbPut('sessions',s); toast('Saved'); openSessionDetail(id);
 }
-async function editSessionItem(id,idx){const s=await dbGet('sessions',id),it=s.items[idx];if(!it)return;openModal(`<h3>Edit Item</h3><label>Item Name *</label><input id="eiName" value="${escapeHtml(it.name)}"><label>Item Price / Total *</label><input type="number" min="0" id="eiPrice" value="${it.total||0}"><div class="toggle-row"><b>Advanced item details</b><label class="switch"><input type="checkbox" id="eiAdv" ${it.advanced?'checked':''}><span class="slider"></span></label></div><div id="eiAdvBlock"></div><label style="display:flex;align-items:center;gap:8px;margin-top:10px"><input type="checkbox" id="eiInv" ${it.addToInventory?'checked':''}> Add to inventory when session closes</label><button class="btn" style="margin-top:12px" onclick="saveSessionItem('${id}',${idx})">Save Item</button>`);const render=()=>{const on=document.getElementById('eiAdv').checked;const b=document.getElementById('eiAdvBlock');b.style.display=on?'block':'none';if(on)b.innerHTML=`<div class="row"><div><label>Unit</label><input id="eiUnit" value="${escapeHtml(it.unit||'')}"></div><div><label>Unit Price</label><input type="number" min="0" id="eiUnitPrice" value="${it.unitPrice??it.priceUnit??''}"></div></div><div class="row"><div><label>Quantity</label><input type="number" min="0" step="any" id="eiQty" value="${it.quantity??it.qty??''}"></div><div><label>Pieces</label><input type="number" min="0" step="any" id="eiPieces" value="${it.pieces??''}"></div></div><label>Subcategory (optional)</label><input id="eiSubcategory" value="${escapeHtml(it.subcategory||'')}"><label>Note</label><textarea id="eiNote">${escapeHtml(it.note||'')}</textarea>`;};document.getElementById('eiAdv').onchange=render;render();}
-async function saveSessionItem(id,idx){const s=await dbGet('sessions',id),it=s.items[idx],name=document.getElementById('eiName').value.trim(),total=parseFloat(document.getElementById('eiPrice').value);if(!name||Number.isNaN(total)||total<0){toast('Item name and price are required');return;}it.name=name;it.total=Math.round(total);it.addToInventory=document.getElementById('eiInv').checked;it.advanced=document.getElementById('eiAdv').checked;if(it.advanced){it.unit=document.getElementById('eiUnit')?.value.trim()||'';it.unitPrice=parseMaybeNumber(document.getElementById('eiUnitPrice')?.value);it.priceUnit=it.unitPrice!==''?it.unitPrice:it.priceUnit;it.quantity=parseMaybeNumber(document.getElementById('eiQty')?.value);it.qty=it.quantity!==''?it.quantity:1;it.pieces=parseMaybeNumber(document.getElementById('eiPieces')?.value);it.note=document.getElementById('eiNote')?.value||'';it.subcategory=document.getElementById('eiSubcategory')?.value.trim()||'';}await dbPut('sessions',s);closeModal();openSessionDetail(id);}
-async function removeSessionItem(id,idx){const s=await dbGet('sessions',id);if(!confirm('Delete this item?'))return;s.items.splice(idx,1);await dbPut('sessions',s);openSessionDetail(id);}
-async function editJourney(id,idx){const s=await dbGet('sessions',id),j=s.journeys[idx];if(!j)return;const types=await getJourneyTypes();openModal(`<h3>Edit Journey</h3><label>Vehicle / Type</label><select id="ejType">${types.map(t=>`<option ${t===j.type?'selected':''}>${escapeHtml(t)}</option>`).join('')}</select><label>Cost</label><input type="number" min="0" id="ejCost" value="${j.cost||0}"><div class="toggle-row"><b>Advanced journey details</b><label class="switch"><input type="checkbox" id="ejAdv" ${j.advanced?'checked':''}><span class="slider"></span></label></div><div id="ejAdvBlock"></div><button class="btn" style="margin-top:12px" onclick="saveJourney('${id}',${idx})">Save Journey</button>`);const render=()=>{const on=document.getElementById('ejAdv').checked;document.getElementById('ejAdvBlock').innerHTML=on?`<div class="row"><div><label>Journey Started Time</label><input type="datetime-local" id="ejStart" value="${toLocalDateTimeValue(j.startedAt)}"></div><div><label>Journey Ended Time</label><input type="datetime-local" id="ejEnd" value="${toLocalDateTimeValue(j.endedAt)}"></div></div><div class="row"><div><label>Journey Started From</label><input id="ejFrom" value="${escapeHtml(j.from||'')}"></div><div><label>Journey Ended At</label><input id="ejTo" value="${escapeHtml(j.to||'')}"></div></div>`:'';};document.getElementById('ejAdv').onchange=render;render();}
-function toLocalDateTimeValue(v){if(!v)return '';const d=new Date(v);if(Number.isNaN(d.getTime()))return '';const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;}
-async function saveJourney(id,idx){const s=await dbGet('sessions',id),j=s.journeys[idx];j.type=document.getElementById('ejType').value;j.cost=Math.max(0,parseInt(document.getElementById('ejCost').value)||0);j.advanced=document.getElementById('ejAdv').checked;if(j.advanced){j.startedAt=document.getElementById('ejStart').value?new Date(document.getElementById('ejStart').value).toISOString():'';j.endedAt=document.getElementById('ejEnd').value?new Date(document.getElementById('ejEnd').value).toISOString():'';j.from=document.getElementById('ejFrom').value.trim();j.to=document.getElementById('ejTo').value.trim();}await dbPut('sessions',s);closeModal();openSessionDetail(id);}
-async function removeSessionJourney(id,idx){
-  const s=await dbGet('sessions',id); if(!s)return; s.journeys=Array.isArray(s.journeys)?s.journeys:[];
-  if(idx<0||idx>=s.journeys.length)return;
-  if(!confirm('Delete this journey?'))return;
-  s.journeys.splice(idx,1); await dbPut('sessions',s); toast('Journey deleted'); await openSessionDetail(id);
+function parseQuickItems(text){
+  return text.split('\n').map(l=>l.trim()).filter(Boolean).map(line=>{
+    let m = line.match(/^(.+?)[,\-–]\s*৳?\s*([\d.]+)\s*$/);
+    if(!m) m = line.match(/^(.+?)\s+৳?\s*([\d.]+)\s*$/);
+    if(!m) return null;
+    return { name:m[1].trim(), price: parseFloat(m[2]) };
+  }).filter(Boolean);
 }
+async function quickAddItems(id){
+  const text = document.getElementById('quickItems').value;
+  const parsed = parseQuickItems(text);
+  if(!parsed.length){ toast('No valid items found — use "Item, Price" per line'); return; }
+  const s = await dbGet('sessions', id);
+  s.items = s.items || [];
+  parsed.forEach(p=> s.items.push({ id:uid(), name:p.name, category:'', brand:'', unit:'', qty:1, priceUnit:p.price, total: Math.round(p.price), note:'', addToInventory:false }));
+  await dbPut('sessions', s);
+  toast(parsed.length+' item(s) added'); openSessionDetail(id);
+}
+async function removeSessionItem(id, idx){ const s = await dbGet('sessions',id); s.items.splice(idx,1); await dbPut('sessions',s); openSessionDetail(id); }
+async function removeSessionJourney(id, idx){ const s = await dbGet('sessions',id); s.journeys.splice(idx,1); await dbPut('sessions',s); openSessionDetail(id); }
 async function addJourney(id){
-  const s=await dbGet('sessions',id); if(!s){toast('Session not found');return;}
-  s.journeys=Array.isArray(s.journeys)?s.journeys:[];
-  const typeEl=document.getElementById('journeyType'),costEl=document.getElementById('journeyCost');
-  const type=typeEl?.value||'Other'; const cost=Math.max(0,parseFloat(costEl?.value)||0); const advanced=document.getElementById('journeyAdvancedToggle')?.checked||false;
-  const j={id:uid(),type,cost,from:'',to:'',advanced,startedAt:'',endedAt:''};
-  if(advanced){j.startedAt=document.getElementById('journeyStartedAt')?.value?new Date(document.getElementById('journeyStartedAt').value).toISOString():'';j.endedAt=document.getElementById('journeyEndedAt')?.value?new Date(document.getElementById('journeyEndedAt').value).toISOString():'';j.from=document.getElementById('journeyFrom')?.value.trim()||'';j.to=document.getElementById('journeyTo')?.value.trim()||'';}
-  s.journeys.push(j); await dbPut('sessions',s); toast('Journey added'); await openSessionDetail(id);
+  const type = document.getElementById('journeyType').value;
+  const cost = Math.max(0, parseInt(document.getElementById('journeyCost').value)||0);
+  const s = await dbGet('sessions', id);
+  s.journeys = s.journeys || [];
+  s.journeys.push({ id:uid(), type, cost, from:'', to:'' });
+  await dbPut('sessions', s);
+  toast('Journey added'); openSessionDetail(id);
 }
 async function deleteSession(id){
   if(!confirm('Delete this shopping session? This cannot be undone.')) return;
   await dbDelete('sessions', id); closeModal(); toast('Session deleted'); render();
 }
-async function openEndSession(id){const s=await dbGet('sessions',id),total=sessionTotal(s),expected=Math.max(0,s.cashTaken-total);openModal(`<h3>End Session — ${escapeHtml(s.name)}</h3><div class="card"><div>Starting cash: ${fmt(s.cashTaken)}</div><div>Total expense: ${fmt(total)}</div><label>Expected return</label><input class="readonly-field" type="number" value="${expected}" readonly><div class="meta">Expected return is calculated and cannot be edited.</div></div><label>Actual return (${CURRENCY_SYMBOL}) *</label><input type="number" min="0" id="actualCash" value="${expected}"><button class="btn" style="margin-top:12px" onclick="confirmEndSession('${s.id}',${expected})">Reconcile & Close</button>`);}
-async function confirmEndSession(id,expected){const actual=parseInt(document.getElementById('actualCash').value);if(isNaN(actual)||actual<0){toast('Enter a valid actual return');return;}const s=await dbGet('sessions',id),total=sessionTotal(s);s.status='closed';s.endCash=actual;s.actualReturn=actual;s.expectedCash=expected;s.expectedReturn=expected;s.difference=actual-expected;s.endTime=now();await dbPut('sessions',s);const itemsTotal=sessionItemsTotal(s),journeysTotal=sessionJourneysTotal(s);if(itemsTotal>0)await addTransaction('Shopping',itemsTotal,'Shopping',s.name,s.id);if(journeysTotal>0)await addTransaction('Transport',journeysTotal,'Transport',s.name+' (transport)',s.id);for(const it of(s.items||[]))if(it.addToInventory){const inv=(await dbGetAll('inventory')).find(i=>i.name.toLowerCase()===it.name.toLowerCase()),qty=(it.quantity!=null&&it.quantity!=='')?it.quantity:(it.qty||1);if(inv){inv.currentQty=(inv.currentQty||0)+qty;inv.lastPurchasePrice=it.unitPrice??it.priceUnit;inv.lastPurchaseDate=todayStr();await dbPut('inventory',inv);}else await dbPut('inventory',{id:uid(),name:it.name,category:it.category||'Other',unit:it.unit||'',currentQty:qty,minQty:1,brand:it.brand||'',lastPurchasePrice:it.unitPrice??it.priceUnit,lastPurchaseDate:todayStr(),notes:it.note||''});}closeModal();toast('Session reconciled');render();}
+async function openEndSession(id){
+  const s = await dbGet('sessions', id);
+  const total = sessionTotal(s);
+  const expected = Math.max(0, s.cashTaken - total);
+  openModal(`<h3>End Session — ${s.name}</h3>
+  <div class="card"><div>Starting cash: ${fmt(s.cashTaken)}</div><div>Total expense: ${fmt(total)}</div><div><b>Expected remaining: ${fmt(expected)}</b></div></div>
+  <label>Actual Remaining Cash (${CURRENCY_SYMBOL})</label><input type="number" min="0" id="actualCash" placeholder="${expected}">
+  <button class="btn" style="margin-top:12px" onclick="confirmEndSession('${s.id}', ${expected})">Reconcile & Close</button>`);
+}
+async function confirmEndSession(id, expected){
+  const actual = parseInt(document.getElementById('actualCash').value);
+  if(isNaN(actual)){ toast('Enter actual cash'); return; }
+  const s = await dbGet('sessions', id);
+  const total = sessionTotal(s);
+  s.status='closed'; s.endCash=actual; s.expectedCash=expected; s.difference = actual-expected;
+  await dbPut('sessions', s);
+  const itemsTotal = sessionItemsTotal(s), journeysTotal = sessionJourneysTotal(s);
+  if(itemsTotal>0) await addTransaction('Shopping', itemsTotal, 'Shopping', s.name, s.id);
+  if(journeysTotal>0) await addTransaction('Transport', journeysTotal, 'Transport', s.name+' (transport)', s.id);
+  // inventory update for items marked
+  for(const it of (s.items||[])){
+    if(it.addToInventory){
+      const inv = (await dbGetAll('inventory')).find(i=>i.name.toLowerCase()===it.name.toLowerCase());
+      if(inv){ inv.currentQty = (inv.currentQty||0) + (it.qty||1); inv.lastPurchasePrice=it.priceUnit; inv.lastPurchaseDate=todayStr(); await dbPut('inventory',inv); }
+      else { await dbPut('inventory',{ id:uid(), name:it.name, category:it.category||'Other', unit:it.unit||'', currentQty:it.qty||1, minQty:1, brand:it.brand||'', lastPurchasePrice:it.priceUnit, lastPurchaseDate:todayStr(), notes:'' }); }
+    }
+  }
+  closeModal(); toast('Session reconciled'); render();
+}
 
 /* ================= EXPENSES ================= */
 async function renderExpenses(root){
@@ -571,8 +597,8 @@ async function renderInventory(root){
   </div>
   ${items.length? items.map(i=>{
     const st = status(i);
-    return `<div class="list-item"><div style="min-width:0"><div>${escapeHtml(i.name)} ${i.brand?('('+escapeHtml(i.brand)+')'):''}</div><div class="meta">${i.currentQty}${escapeHtml(i.unit||'')} · min ${i.minQty}${escapeHtml(i.unit||'')} · ${escapeHtml(i.category||'')}</div></div>
-    <div class="item-actions"><span class="badge ${st==='Low Stock'||st==='Out of Stock'?'low':''}">${st}</span><button type="button" onclick="editInventory('${i.id}');event.stopPropagation()">Edit</button><button type="button" onclick="refillInventory('${i.id}');event.stopPropagation()">Refill</button><button type="button" class="delete" onclick="deleteInventory('${i.id}');event.stopPropagation()">Delete</button></div></div>`;
+    return `<div class="list-item"><div><div>${i.name} ${i.brand?('('+i.brand+')'):''}</div><div class="meta">${i.currentQty}${i.unit} · min ${i.minQty}${i.unit} · ${i.category}</div></div>
+    <div><span class="badge ${st==='Low Stock'||st==='Out of Stock'?'low':''}">${st}</span> <span onclick="deleteInventory('${i.id}')" style="cursor:pointer;color:var(--danger)">✕</span></div></div>`;
   }).join('') : '<div class="empty">No inventory items match.</div>'}`;
 }
 function setInvFilter(f){ INV_FILTER=f; render(); }
@@ -595,44 +621,7 @@ async function saveInventory(){
     lastPurchasePrice:0, lastPurchaseDate:'' };
   await dbPut('inventory', item); closeModal(); toast('Item added'); render();
 }
-async function editInventory(id){
-  const item=await dbGet('inventory',id); if(!item){toast('Inventory item not found');return;}
-  const cats=(await dbGetAll('categories')).filter(c=>c.active);
-  openModal(`<h3>Edit Inventory Item</h3>
-  <label>Item Name</label><input id="editInvName" value="${escapeHtml(item.name||'')}">
-  <label>Category</label><select id="editInvCat">${cats.map(c=>`<option ${c.name===item.category?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select>
-  <div class="row"><div><label>Unit</label><input id="editInvUnit" value="${escapeHtml(item.unit||'')}"></div><div><label>Brand</label><input id="editInvBrand" value="${escapeHtml(item.brand||'')}"></div></div>
-  <div class="row"><div><label>Current Qty</label><input type="number" step="any" min="0" id="editInvQty" value="${item.currentQty??0}"></div><div><label>Minimum Qty</label><input type="number" step="any" min="0" id="editInvMin" value="${item.minQty??0}"></div></div>
-  <label>Last Purchase Price</label><input type="number" step="any" min="0" id="editInvPrice" value="${item.lastPurchasePrice??0}">
-  <label>Notes</label><textarea id="editInvNotes">${escapeHtml(item.notes||'')}</textarea>
-  <button type="button" class="btn" style="margin-top:12px" onclick="saveInventoryEdit('${id}')">Save Changes</button>`);
-}
-async function saveInventoryEdit(id){
-  const item=await dbGet('inventory',id); if(!item)return;
-  const name=document.getElementById('editInvName').value.trim(); if(!name){toast('Enter item name');return;}
-  item.name=name; item.category=document.getElementById('editInvCat').value; item.unit=document.getElementById('editInvUnit').value.trim(); item.brand=document.getElementById('editInvBrand').value.trim();
-  item.currentQty=Math.max(0,parseFloat(document.getElementById('editInvQty').value)||0); item.minQty=Math.max(0,parseFloat(document.getElementById('editInvMin').value)||0); item.lastPurchasePrice=Math.max(0,parseFloat(document.getElementById('editInvPrice').value)||0); item.notes=document.getElementById('editInvNotes').value;
-  await dbPut('inventory',item); closeModal(); toast('Inventory item updated'); render();
-}
-async function refillInventory(id){
-  const item=await dbGet('inventory',id); if(!item){toast('Inventory item not found');return;}
-  openModal(`<h3>Refill / Restock — ${escapeHtml(item.name)}</h3>
-  <div class="card"><div>Current stock: <b>${item.currentQty??0} ${escapeHtml(item.unit||'')}</b></div></div>
-  <label>Quantity to add</label><input type="number" min="0" step="any" id="refillQty" value="1">
-  <label>Purchase Price (optional)</label><input type="number" min="0" step="any" id="refillPrice" value="${item.lastPurchasePrice??0}">
-  <label>Note (optional)</label><input id="refillNote" placeholder="Restock note">
-  <button type="button" class="btn" style="margin-top:12px" onclick="saveInventoryRefill('${id}')">Add Stock</button>`);
-}
-async function saveInventoryRefill(id){
-  const item=await dbGet('inventory',id); if(!item)return;
-  const qty=parseFloat(document.getElementById('refillQty').value); if(!Number.isFinite(qty)||qty<=0){toast('Enter a quantity greater than 0');return;}
-  const price=parseFloat(document.getElementById('refillPrice').value); const note=document.getElementById('refillNote').value.trim();
-  item.currentQty=(parseFloat(item.currentQty)||0)+qty;
-  if(Number.isFinite(price)&&price>=0){item.lastPurchasePrice=price;item.lastPurchaseDate=todayStr();}
-  if(note)item.notes=item.notes?item.notes+' | '+note:note;
-  await dbPut('inventory',item); closeModal(); toast(`Added ${qty} ${item.unit||''} to ${item.name}`); render();
-}
-async function deleteInventory(id){ if(!confirm('Delete this inventory item?')) return; await dbDelete('inventory',id); closeModal(); toast('Inventory item deleted'); render(); }
+async function deleteInventory(id){ if(!confirm('Delete this inventory item?')) return; await dbDelete('inventory',id); render(); }
 
 /* ================= REPORTS ================= */
 async function renderReports(root){
@@ -725,21 +714,17 @@ async function renderSettings(root){
   <div class="card"><button class="btn secondary" onclick="document.getElementById('langToggle').click()">Current: ${LANG==='en'?'English':'বাংলা'} — tap to switch</button></div>
 
   <h2 class="section-title">Categories</h2>
-  <div class="card" id="catList">${cats.map(c=>`<div class="list-item"><div>${c.parentId?'↳ ':''}${c.name} ${!c.active?'<span class="badge">disabled</span>':''}</div>
+  <div class="card" id="catList">${cats.map(c=>`<div class="list-item"><div>${c.name} ${!c.active?'<span class="badge">disabled</span>':''}</div>
     <div class="row" style="flex:none;gap:6px"><button class="btn small secondary" onclick="renameCategory('${c.id}')">Rename</button>
     <button class="btn small secondary" onclick="toggleCategory('${c.id}')">${c.active?'Disable':'Enable'}</button>
     <button class="btn small danger" onclick="deleteCategory('${c.id}')">Del</button></div></div>`).join('')}
-  <div class="row" style="margin-top:8px"><input id="newCatName" placeholder="New category / subcategory"><select id="newCatParent"><option value="">Top level</option>${cats.map(c=>`<option value="${c.id}">↳ ${escapeHtml(c.name)}</option>`).join('')}</select><button class="btn small" style="flex:none" onclick="addCategory()">Add</button></div></div>
-
-  <h2 class="section-title">Journey Types</h2>
-  <div class="card"><div class="meta">Default: Rickshaw, CNG, Bus, Walking, Other. Add your own vehicle/type for future journeys.</div><div style="margin:8px 0">${(await getJourneyTypes()).map(x=>`<span class="chip">${escapeHtml(x)}</span>`).join('')}</div><div class="row"><input id="newJourneyType" placeholder="e.g. Van / Auto"><button class="btn small" style="flex:none" onclick="addJourneyTypeSetting()">Add</button></div></div>
+  <div class="row" style="margin-top:8px"><input id="newCatName" placeholder="New category"><button class="btn small" style="flex:none" onclick="addCategory()">Add</button></div></div>
 
   <h2 class="section-title">Data</h2>
   <div class="card">
-    <button class="btn secondary" style="margin-bottom:8px" onclick="openExportOptions()">⬇️ Export / Report Builder</button>
     <button class="btn secondary" style="margin-bottom:8px" onclick="exportJSON()">⬇️ Export JSON (Full Backup)</button>
-    <button class="btn secondary" style="margin-bottom:8px" onclick="exportCSV()">⬇️ Export CSV (All Transactions)</button>
-    <label>Import File</label><input type="file" id="importFile" accept=".json,.csv,text/csv">
+    <button class="btn secondary" style="margin-bottom:8px" onclick="exportCSV()">⬇️ Export CSV (Transactions)</button>
+    <label>Import File</label><input type="file" id="importFile" accept=".json">
     <div class="toggle-row"><span>Replace instead of Merge</span><label class="switch"><input type="checkbox" id="importReplace"><span class="slider"></span></label></div>
     <button class="btn secondary" style="margin-top:6px" onclick="doImport()">⬆️ Import</button>
     <div class="divider"></div>
@@ -760,7 +745,7 @@ async function renderSettings(root){
 async function addCategory(){
   const name = document.getElementById('newCatName').value.trim();
   if(!name){ return; }
-  const parentId=document.getElementById('newCatParent')?.value||''; await dbPut('categories',{id:uid(),name,active:true,parentId}); render();
+  await dbPut('categories',{id:uid(),name,active:true}); render();
 }
 async function renameCategory(id){
   const c = await dbGet('categories',id);
@@ -769,8 +754,6 @@ async function renameCategory(id){
 }
 async function toggleCategory(id){ const c = await dbGet('categories',id); c.active=!c.active; await dbPut('categories',c); render(); }
 async function deleteCategory(id){ if(!confirm('Delete this category?')) return; await dbDelete('categories',id); render(); }
-
-async function addJourneyTypeSetting(){const el=document.getElementById('newJourneyType'),name=el?.value.trim();if(!name)return;const st=await dbGet('settings','app')||{id:'app'};st.journeyTypes=Array.isArray(st.journeyTypes)?st.journeyTypes:await getJourneyTypes();if(!st.journeyTypes.some(x=>x.toLowerCase()===name.toLowerCase()))st.journeyTypes.push(name);await dbPut('settings',st);render();}
 
 /* ---- Export ---- */
 function downloadFile(filename, content, mime){
@@ -789,14 +772,13 @@ async function exportJSON(){
   toast('Exported JSON');
 }
 function csvEscape(v){ if(v==null) return ''; const s=String(v).replace(/"/g,'""'); return /[",\n]/.test(s)?`"${s}"`:s; }
-function categoryMatches(record,selected,cats=[]){if(selected==='All')return true;const wanted=String(selected).toLowerCase();const direct=String(record.category||'').toLowerCase()===wanted||String(record.subcategory||'').toLowerCase()===wanted;if(direct)return true;const children=new Set();let changed=true;while(changed){changed=false;for(const c of cats){if(String(c.parentId||'') && (String(c.parentId).toLowerCase()===wanted||[...children].some(id=>String(id).toLowerCase()===String(c.parentId).toLowerCase()))){if(!children.has(c.name)){children.add(c.name);changed=true;}}}}return children.has(record.category)||children.has(record.subcategory);}
-function periodMatch(date,period){const d=new Date(date+'T00:00:00'),n=new Date();if(period==='all')return true;if(period==='day')return date===todayStr();if(period==='month')return date.startsWith(todayStr().slice(0,7));if(period==='week'){n.setHours(0,0,0,0);const day=(n.getDay()+6)%7,st=new Date(n);st.setDate(n.getDate()-day);return d>=st&&d<=n;}return true;}
-async function collectReportRows(dataset='transactions',period='all',category='All'){const rows=[],cats=await dbGetAll('categories');if(dataset==='transactions'||dataset==='expenses'){const a=dataset==='transactions'?await dbGetAll('transactions'):await dbGetAll('expenses');a.filter(r=>periodMatch(r.date||'',period)&&categoryMatches(r,category,cats)).forEach(r=>rows.push({...r,recordType:dataset}));}else if(['sessions','items','journeys'].includes(dataset)){for(const s of await dbGetAll('sessions')){if(!periodMatch(s.date||'',period))continue;if(dataset==='sessions')rows.push({...s,recordType:'session',total:sessionTotal(s),actualReturn:s.actualReturn??s.endCash??''});if(dataset==='items')(s.items||[]).filter(i=>categoryMatches(i,category,cats)).forEach(i=>rows.push({...i,sessionId:s.id,sessionName:s.name,date:s.date,recordType:'item'}));if(dataset==='journeys')(s.journeys||[]).forEach(j=>rows.push({...j,sessionId:s.id,sessionName:s.name,date:s.date,recordType:'journey'}));}}else for(const st of STORES)for(const r of await dbGetAll(st))rows.push({...r,recordType:st});return rows;}
-function rowsToCSV(rows){if(!rows.length)return '';const keys=[...new Set(rows.flatMap(r=>Object.keys(r)))];return [keys.map(csvEscape).join(',')].concat(rows.map(r=>keys.map(k=>csvEscape(typeof r[k]==='object'?JSON.stringify(r[k]):r[k])).join(','))).join('\n');}
-function rowsToExcelHtml(rows,title){const keys=[...new Set(rows.flatMap(r=>Object.keys(r)))],th=keys.map(k=>`<th>${escapeHtml(k)}</th>`).join(''),tr=rows.map(r=>`<tr>${keys.map(k=>`<td>${escapeHtml(typeof r[k]==='object'?JSON.stringify(r[k]):r[k]??'')}</td>`).join('')}</tr>`).join('');return `<html><head><meta charset="UTF-8"></head><body><h2>${escapeHtml(title)}</h2><table border="1"><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table></body></html>`;}
-async function openExportOptions(){const cats=(await dbGetAll('categories')).filter(c=>c.active);openModal(`<h3>Export / Report Builder</h3><label>Dataset</label><select id="repDataset"><option value="transactions">Transactions</option><option value="expenses">Expenses</option><option value="sessions">Shopping Sessions</option><option value="items">Shopping Items</option><option value="journeys">Journeys</option><option value="all">Full List</option></select><label>Period</label><select id="repPeriod"><option value="all">All</option><option value="day">Today / Day</option><option value="week">Current Week</option><option value="month">Current Month</option></select><label>Category</label><select id="repCategory"><option>All</option>${cats.map(c=>`<option value="${escapeHtml(c.name)}">${c.parentId?'↳ ':''}${escapeHtml(c.name)}</option>`).join('')}</select><div class="export-grid" style="margin-top:12px"><button class="btn secondary" onclick="runReportExport('json')">JSON</button><button class="btn secondary" onclick="runReportExport('csv')">CSV</button><button class="btn secondary" onclick="runReportExport('xls')">Excel (.xls)</button></div>`);}
-async function runReportExport(format){const dataset=document.getElementById('repDataset').value,period=document.getElementById('repPeriod').value,category=document.getElementById('repCategory').value,rows=await collectReportRows(dataset,period,category),stamp=todayStr();if(format==='json')downloadFile(`home-inventory-${dataset}-${period}-${stamp}.json`,JSON.stringify({schemaVersion:1,exportedAt:now(),dataset,period,category,rows},null,2),'application/json');else if(format==='csv')downloadFile(`home-inventory-${dataset}-${period}-${stamp}.csv`,rowsToCSV(rows),'text/csv;charset=utf-8');else downloadFile(`home-inventory-${dataset}-${period}-${stamp}.xls`,rowsToExcelHtml(rows,`Home Inventory - ${dataset}`),'application/vnd.ms-excel');closeModal();toast('Report exported');}
-async function exportCSV(){const rows=await collectReportRows('transactions','all','All');downloadFile(`home-inventory-transactions-${todayStr()}.csv`,rowsToCSV(rows),'text/csv;charset=utf-8');toast('Exported CSV');}
+async function exportCSV(){
+  const txns = await dbGetAll('transactions');
+  const header = ['id','type','amount','category','date','time','sessionId','description','createdAt','updatedAt'];
+  const rows = [header.join(',')].concat(txns.map(t=>header.map(h=>csvEscape(t[h])).join(',')));
+  downloadFile(`home-inventory-transactions-${todayStr()}.csv`, rows.join('\n'), 'text/csv');
+  toast('Exported CSV');
+}
 async function backupNow(){
   await exportJSON();
   const s = await dbGet('settings','app'); s.lastBackup = now(); await dbPut('settings',s); render();
@@ -814,14 +796,13 @@ function validateImportShape(data){
   if(!('schemaVersion' in data)) return false;
   return STORES.some(s=>Array.isArray(data[s]));
 }
-function parseCSVLine(line){const out=[];let cur='',quoted=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"'){if(quoted&&line[i+1]==='"'){cur+='"';i++;}else quoted=!quoted;}else if(ch===','&&!quoted){out.push(cur);cur='';}else cur+=ch;}out.push(cur);return out;}
 async function doImport(){
   const file = document.getElementById('importFile').files[0];
   if(!file){ toast('Choose a JSON file first'); return; }
   const replace = document.getElementById('importReplace').checked;
   const text = await file.text();
   let data;
-  if(file.name.toLowerCase().endsWith('.csv')){const lines=text.split(/\r?\n/).filter(Boolean);if(lines.length<2){toast('CSV file is empty');return;}const headers=parseCSVLine(lines[0]);const records=lines.slice(1).map(line=>{const vals=parseCSVLine(line),o={};headers.forEach((h,i)=>o[h]=vals[i]??'');return o;});data={schemaVersion:1,transactions:records};}else{try{data=JSON.parse(text);}catch(e){toast('Invalid JSON file');return;}}
+  try{ data = JSON.parse(text); }catch(e){ toast('Invalid JSON file'); return; }
   if(!validateImportShape(data)){ toast('File does not look like a Home Inventory export'); return; }
   if(replace && !confirm('Replace ALL local data with this import? This cannot be undone.')) return;
 
